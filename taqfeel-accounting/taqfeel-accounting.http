@@ -1,0 +1,6 @@
+@taqfeel_accounting_HostAddress = http://localhost:5207
+
+GET {{taqfeel_accounting_HostAddress}}/weatherforecast/
+Accept: application/json
+
+###

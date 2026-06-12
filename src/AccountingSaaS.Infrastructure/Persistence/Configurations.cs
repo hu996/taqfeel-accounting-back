@@ -1,0 +1,80 @@
+using AccountingSaaS.Domain.Entities;
+using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Metadata.Builders;
+
+namespace AccountingSaaS.Infrastructure.Persistence;
+
+public sealed class TenantConfiguration : IEntityTypeConfiguration<Tenant>
+{
+    public void Configure(EntityTypeBuilder<Tenant> builder)
+    {
+        builder.Property(x => x.CompanyName).HasMaxLength(200).IsRequired();
+        builder.Property(x => x.Email).HasMaxLength(256);
+        builder.HasIndex(x => x.CompanyName);
+        builder.HasIndex(x => x.IsDeleted);
+    }
+}
+
+public sealed class ApplicationUserConfiguration : IEntityTypeConfiguration<ApplicationUser>
+{
+    public void Configure(EntityTypeBuilder<ApplicationUser> builder)
+    {
+        builder.Property(x => x.FullName).HasMaxLength(150).IsRequired();
+        builder.HasIndex(x => x.NormalizedEmail).IsUnique().HasFilter("[NormalizedEmail] IS NOT NULL");
+        builder.HasQueryFilter(x => !x.IsDeleted);
+    }
+}
+
+public sealed class PermissionConfiguration : IEntityTypeConfiguration<Permission>
+{
+    public void Configure(EntityTypeBuilder<Permission> builder)
+    {
+        builder.Property(x => x.Name).HasMaxLength(120).IsRequired();
+        builder.Property(x => x.Category).HasMaxLength(80).IsRequired();
+        builder.Property(x => x.Description).HasMaxLength(300);
+        builder.HasIndex(x => x.Name).IsUnique();
+    }
+}
+
+public sealed class RolePermissionConfiguration : IEntityTypeConfiguration<RolePermission>
+{
+    public void Configure(EntityTypeBuilder<RolePermission> builder)
+    {
+        builder.HasKey(x => new { x.RoleId, x.PermissionId });
+        builder.HasOne(x => x.Role).WithMany(x => x.RolePermissions).HasForeignKey(x => x.RoleId);
+        builder.HasOne(x => x.Permission).WithMany(x => x.RolePermissions).HasForeignKey(x => x.PermissionId);
+    }
+}
+
+public sealed class UserTenantAccessConfiguration : IEntityTypeConfiguration<UserTenantAccess>
+{
+    public void Configure(EntityTypeBuilder<UserTenantAccess> builder)
+    {
+        builder.HasKey(x => new { x.UserId, x.TenantId });
+        builder.HasOne(x => x.User).WithMany(x => x.TenantAccesses).HasForeignKey(x => x.UserId);
+        builder.HasOne(x => x.Tenant).WithMany().HasForeignKey(x => x.TenantId);
+    }
+}
+
+public sealed class RefreshTokenConfiguration : IEntityTypeConfiguration<RefreshToken>
+{
+    public void Configure(EntityTypeBuilder<RefreshToken> builder)
+    {
+        builder.Property(x => x.TokenHash).HasMaxLength(128).IsRequired();
+        builder.HasIndex(x => x.TokenHash).IsUnique();
+        builder.HasIndex(x => x.UserId);
+    }
+}
+
+public sealed class AuditLogConfiguration : IEntityTypeConfiguration<AuditLog>
+{
+    public void Configure(EntityTypeBuilder<AuditLog> builder)
+    {
+        builder.Property(x => x.Action).HasMaxLength(120).IsRequired();
+        builder.Property(x => x.EntityName).HasMaxLength(120);
+        builder.Property(x => x.EntityId).HasMaxLength(80);
+        builder.HasIndex(x => x.TenantId);
+        builder.HasIndex(x => x.UserId);
+        builder.HasIndex(x => x.CreatedAt);
+    }
+}
