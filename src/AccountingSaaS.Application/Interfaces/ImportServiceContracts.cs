@@ -20,6 +20,11 @@ public interface IImportService
     Task<BaseResponseDto<ImportBatchSummaryDto>> ConfirmImportAsync(Guid id, ConfirmImportRequest request, CancellationToken cancellationToken);
     Task<BaseResponseDto<ImportBatchSummaryDto>> CancelImportAsync(Guid id, CancelImportRequest request, CancellationToken cancellationToken);
     Task<BaseResponseDto<ImportTemplateDto>> GenerateTemplateAsync(ImportType importType, CancellationToken cancellationToken);
+    Task<BaseResponseDto<ImportBatchSummaryDto>> SubmitForReviewAsync(Guid id, SubmitWorkflowRequest request, CancellationToken cancellationToken);
+    Task<BaseResponseDto<ImportBatchSummaryDto>> StartReviewAsync(Guid id, CancellationToken cancellationToken);
+    Task<BaseResponseDto<ImportBatchSummaryDto>> ApproveAsync(Guid id, CancellationToken cancellationToken);
+    Task<BaseResponseDto<ImportBatchSummaryDto>> RejectAsync(Guid id, WorkflowDecisionRequest request, CancellationToken cancellationToken);
+    Task<BaseResponseDto<ImportBatchSummaryDto>> ReturnForCorrectionAsync(Guid id, WorkflowDecisionRequest request, CancellationToken cancellationToken);
 }
 
 public sealed record ImportValidationContext(Guid BatchId, ImportType ImportType, Guid? FinancialYearId, Guid? AccountingPeriodId);

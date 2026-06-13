@@ -25,6 +25,26 @@ public sealed class UserTenantAccess
     public Tenant Tenant { get; set; } = default!;
 }
 
+public sealed class ReviewerTenantAssignment
+{
+    public Guid ReviewerUserId { get; set; }
+    public ApplicationUser ReviewerUser { get; set; } = default!;
+    public Guid TenantId { get; set; }
+    public Tenant Tenant { get; set; } = default!;
+    public bool IsActive { get; set; } = true;
+    public DateTimeOffset CreatedAt { get; set; }
+    public Guid? CreatedByUserId { get; set; }
+}
+
+public sealed class NumberSequence
+{
+    public Guid Id { get; set; }
+    public Guid TenantId { get; set; }
+    public string SequenceKey { get; set; } = string.Empty;
+    public long LastNumber { get; set; }
+    public DateTimeOffset UpdatedAt { get; set; }
+}
+
 public sealed class RefreshToken
 {
     public Guid Id { get; set; }

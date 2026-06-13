@@ -44,8 +44,8 @@ public sealed class CreateAccountRequestValidator : AbstractValidator<CreateAcco
 {
     public CreateAccountRequestValidator()
     {
-        RuleFor(x => x.Code).NotEmpty().MaximumLength(50);
-        RuleFor(x => x.NameEn).NotEmpty().MaximumLength(200);
+        RuleFor(x => x.Code).MaximumLength(50);
+        RuleFor(x => x.NameEn).NotEmpty().WithMessage("اسم الحساب مطلوب.").MaximumLength(200);
         RuleFor(x => x.NameAr).MaximumLength(200);
     }
 }
@@ -54,8 +54,8 @@ public sealed class UpdateAccountRequestValidator : AbstractValidator<UpdateAcco
 {
     public UpdateAccountRequestValidator()
     {
-        RuleFor(x => x.Code).NotEmpty().MaximumLength(50);
-        RuleFor(x => x.NameEn).NotEmpty().MaximumLength(200);
+        RuleFor(x => x.Code).MaximumLength(50);
+        RuleFor(x => x.NameEn).NotEmpty().WithMessage("اسم الحساب مطلوب.").MaximumLength(200);
         RuleFor(x => x.NameAr).MaximumLength(200);
     }
 }
@@ -64,8 +64,8 @@ public sealed class CreateCostCenterRequestValidator : AbstractValidator<CreateC
 {
     public CreateCostCenterRequestValidator()
     {
-        RuleFor(x => x.Code).NotEmpty().MaximumLength(50);
-        RuleFor(x => x.Name).NotEmpty().MaximumLength(200);
+        RuleFor(x => x.Code).MaximumLength(50);
+        RuleFor(x => x.Name).NotEmpty().WithMessage("اسم مركز التكلفة مطلوب.").MaximumLength(200);
     }
 }
 
@@ -73,8 +73,8 @@ public sealed class UpdateCostCenterRequestValidator : AbstractValidator<UpdateC
 {
     public UpdateCostCenterRequestValidator()
     {
-        RuleFor(x => x.Code).NotEmpty().MaximumLength(50);
-        RuleFor(x => x.Name).NotEmpty().MaximumLength(200);
+        RuleFor(x => x.Code).MaximumLength(50);
+        RuleFor(x => x.Name).NotEmpty().WithMessage("اسم مركز التكلفة مطلوب.").MaximumLength(200);
     }
 }
 
@@ -85,9 +85,9 @@ public sealed class CreateJournalEntryRequestValidator : AbstractValidator<Creat
         RuleFor(x => x.FinancialYearId).NotEmpty();
         RuleFor(x => x.AccountingPeriodId).NotEmpty();
         RuleFor(x => x.Description).NotEmpty().MaximumLength(500);
-        RuleFor(x => x.Lines).NotNull().Must(x => x.Count >= 2).WithMessage("Journal entry must have at least two lines.");
+        RuleFor(x => x.Lines).NotNull().Must(x => x.Count >= 2).WithMessage("يجب أن يحتوي القيد على طرفين على الأقل.");
         RuleForEach(x => x.Lines).SetValidator(new JournalEntryLineRequestValidator());
-        RuleFor(x => x.Lines.Sum(l => l.Debit)).Equal(x => x.Lines.Sum(l => l.Credit)).WithMessage("Total debit must equal total credit.");
+        RuleFor(x => x.Lines.Sum(l => l.Debit)).Equal(x => x.Lines.Sum(l => l.Credit)).WithMessage("يجب أن يتساوى إجمالي المدين مع إجمالي الدائن.");
     }
 }
 
@@ -96,9 +96,9 @@ public sealed class UpdateJournalEntryRequestValidator : AbstractValidator<Updat
     public UpdateJournalEntryRequestValidator()
     {
         RuleFor(x => x.Description).NotEmpty().MaximumLength(500);
-        RuleFor(x => x.Lines).NotNull().Must(x => x.Count >= 2).WithMessage("Journal entry must have at least two lines.");
+        RuleFor(x => x.Lines).NotNull().Must(x => x.Count >= 2).WithMessage("يجب أن يحتوي القيد على طرفين على الأقل.");
         RuleForEach(x => x.Lines).SetValidator(new JournalEntryLineRequestValidator());
-        RuleFor(x => x.Lines.Sum(l => l.Debit)).Equal(x => x.Lines.Sum(l => l.Credit)).WithMessage("Total debit must equal total credit.");
+        RuleFor(x => x.Lines.Sum(l => l.Debit)).Equal(x => x.Lines.Sum(l => l.Credit)).WithMessage("يجب أن يتساوى إجمالي المدين مع إجمالي الدائن.");
     }
 }
 
@@ -109,7 +109,7 @@ public sealed class JournalEntryLineRequestValidator : AbstractValidator<Journal
         RuleFor(x => x.AccountId).NotEmpty();
         RuleFor(x => x.Debit).GreaterThanOrEqualTo(0);
         RuleFor(x => x.Credit).GreaterThanOrEqualTo(0);
-        RuleFor(x => x).Must(x => x.Debit > 0 ^ x.Credit > 0).WithMessage("Each line must have either debit or credit.");
+        RuleFor(x => x).Must(x => x.Debit > 0 ^ x.Credit > 0).WithMessage("يجب أن يحتوي السطر على مبلغ مدين أو دائن فقط.");
     }
 }
 

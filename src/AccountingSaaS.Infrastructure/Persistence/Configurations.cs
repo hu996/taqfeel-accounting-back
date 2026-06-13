@@ -9,6 +9,7 @@ public sealed class TenantConfiguration : IEntityTypeConfiguration<Tenant>
     public void Configure(EntityTypeBuilder<Tenant> builder)
     {
         builder.Property(x => x.CompanyName).HasMaxLength(200).IsRequired();
+        builder.HasIndex(x => x.TenantNo).IsUnique();
         builder.Property(x => x.Email).HasMaxLength(256);
         builder.HasIndex(x => x.CompanyName);
         builder.HasIndex(x => x.IsDeleted);
@@ -20,8 +21,29 @@ public sealed class ApplicationUserConfiguration : IEntityTypeConfiguration<Appl
     public void Configure(EntityTypeBuilder<ApplicationUser> builder)
     {
         builder.Property(x => x.FullName).HasMaxLength(150).IsRequired();
+        builder.HasIndex(x => x.UserNo).IsUnique();
         builder.HasIndex(x => x.NormalizedEmail).IsUnique().HasFilter("[NormalizedEmail] IS NOT NULL");
         builder.HasQueryFilter(x => !x.IsDeleted);
+    }
+}
+
+public sealed class ReviewerTenantAssignmentConfiguration : IEntityTypeConfiguration<ReviewerTenantAssignment>
+{
+    public void Configure(EntityTypeBuilder<ReviewerTenantAssignment> builder)
+    {
+        builder.HasKey(x => new { x.ReviewerUserId, x.TenantId });
+        builder.HasOne(x => x.ReviewerUser).WithMany().HasForeignKey(x => x.ReviewerUserId).OnDelete(DeleteBehavior.Cascade);
+        builder.HasOne(x => x.Tenant).WithMany().HasForeignKey(x => x.TenantId).OnDelete(DeleteBehavior.Cascade);
+        builder.HasIndex(x => new { x.TenantId, x.IsActive });
+    }
+}
+
+public sealed class NumberSequenceConfiguration : IEntityTypeConfiguration<NumberSequence>
+{
+    public void Configure(EntityTypeBuilder<NumberSequence> builder)
+    {
+        builder.Property(x => x.SequenceKey).HasMaxLength(120).IsRequired();
+        builder.HasIndex(x => new { x.TenantId, x.SequenceKey }).IsUnique();
     }
 }
 

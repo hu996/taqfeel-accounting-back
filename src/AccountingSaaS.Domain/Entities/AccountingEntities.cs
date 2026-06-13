@@ -33,6 +33,7 @@ public sealed class AccountingPeriod : TenantEntity
 
 public sealed class Account : TenantEntity
 {
+    public long AccountNo { get; set; }
     public string Code { get; set; } = string.Empty;
     public string NameAr { get; set; } = string.Empty;
     public string NameEn { get; set; } = string.Empty;
@@ -46,6 +47,7 @@ public sealed class Account : TenantEntity
 
 public sealed class CostCenter : TenantEntity
 {
+    public long CostCenterNo { get; set; }
     public string Code { get; set; } = string.Empty;
     public string Name { get; set; } = string.Empty;
     public bool IsActive { get; set; } = true;
@@ -53,6 +55,7 @@ public sealed class CostCenter : TenantEntity
 
 public sealed class JournalEntry : TenantEntity
 {
+    public long JournalEntryNo { get; set; }
     public Guid FinancialYearId { get; set; }
     public FinancialYear FinancialYear { get; set; } = default!;
     public Guid AccountingPeriodId { get; set; }
@@ -61,6 +64,9 @@ public sealed class JournalEntry : TenantEntity
     public DateOnly EntryDate { get; set; }
     public string Description { get; set; } = string.Empty;
     public JournalEntryStatus Status { get; set; } = JournalEntryStatus.Draft;
+    public WorkflowStatus WorkflowStatus { get; set; } = WorkflowStatus.Draft;
+    public Guid? AssignedReviewerUserId { get; set; }
+    public string? ReviewReason { get; set; }
     public decimal TotalDebit { get; set; }
     public decimal TotalCredit { get; set; }
     public DateTimeOffset? PostedAt { get; set; }
@@ -86,6 +92,7 @@ public sealed class JournalEntryLine : TenantEntity
 
 public sealed class Document : TenantEntity
 {
+    public long DocumentNo { get; set; }
     public Guid? FinancialYearId { get; set; }
     public Guid? AccountingPeriodId { get; set; }
     public DocumentType DocumentType { get; set; }
@@ -99,6 +106,8 @@ public sealed class Document : TenantEntity
     public Guid UploadedByUserId { get; set; }
     public DateTimeOffset UploadedAt { get; set; }
     public string? Notes { get; set; }
+    public WorkflowStatus WorkflowStatus { get; set; } = WorkflowStatus.Draft;
+    public Guid? AssignedReviewerUserId { get; set; }
 }
 
 public sealed class ClosingChecklistTemplate : TenantEntity
@@ -146,6 +155,7 @@ public sealed class ClosingSubmission : TenantEntity
     public Guid FinancialYearId { get; set; }
     public Guid AccountingPeriodId { get; set; }
     public ClosingSubmissionStatus Status { get; set; } = ClosingSubmissionStatus.Draft;
+    public Guid? AssignedReviewerUserId { get; set; }
     public DateTimeOffset? SubmittedAt { get; set; }
     public Guid? SubmittedByUserId { get; set; }
     public DateTimeOffset? ReviewedAt { get; set; }

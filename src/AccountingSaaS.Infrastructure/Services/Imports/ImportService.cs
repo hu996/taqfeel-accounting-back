@@ -17,7 +17,9 @@ public sealed class ImportService(
     IExcelReaderService excelReader,
     IImportHandlerFactory handlerFactory,
     IAuditLogService auditLog,
-    IConfiguration configuration) : IImportService
+    IConfiguration configuration,
+    INumberSequenceService numberSequence,
+    IWorkflowAccessService workflowAccess) : IImportService
 {
     private static readonly HashSet<string> AllowedMimeTypes =
     [
@@ -49,6 +51,7 @@ public sealed class ImportService(
 
         var batch = new ImportBatch
         {
+            ImportBatchNo = await numberSequence.NextAsync("ImportBatchNo", tenantId, cancellationToken),
             ImportType = request.ImportType,
             Status = ImportBatchStatus.Validating,
             OriginalFileName = Path.GetFileName(originalFileName),
@@ -94,7 +97,11 @@ public sealed class ImportService(
             await auditLog.LogAsync("Import batch validated", tenantId, currentUser.UserId, nameof(ImportBatch), batch.Id.ToString(), newValues: $"{batch.ImportType}|Rows={batch.TotalRows}|Valid={batch.ValidRows}|Invalid={batch.InvalidRows}", cancellationToken: cancellationToken);
 
             var previewRows = await dbContext.ImportBatchRows.AsNoTracking().Where(x => x.ImportBatchId == batch.Id).OrderBy(x => x.RowNumber).Take(50).ToListAsync(cancellationToken);
-            return BaseResponseDto<ImportPreviewDto>.Ok(new ImportPreviewDto(batch.Id, batch.ImportType, batch.Status, batch.TotalRows, batch.ValidRows, batch.InvalidRows, batch.WarningRows, previewRows.Select(ToRowDto).ToList()), "Import file validated.");
+            return BaseResponseDto<ImportPreviewDto>.Ok(new ImportPreviewDto(batch.Id, batch.ImportType, batch.Status, batch.TotalRows, batch.ValidRows, batch.InvalidRows, batch.WarningRows, previewRows.Select(ToRowDto).ToList())
+            {
+                ImportBatchNo = batch.ImportBatchNo,
+                WorkflowStatus = batch.WorkflowStatus
+            }, "تم فحص ملف الاستيراد.");
         }
         catch (Exception ex)
         {
@@ -102,7 +109,7 @@ public sealed class ImportService(
             batch.ErrorSummary = ex.Message;
             await dbContext.SaveChangesAsync(cancellationToken);
             await auditLog.LogAsync("Import failed", tenantId, currentUser.UserId, nameof(ImportBatch), batch.Id.ToString(), newValues: ex.Message, cancellationToken: cancellationToken);
-            return BaseResponseDto<ImportPreviewDto>.Fail("Import validation failed.", [ex.Message]);
+            throw;
         }
     }
 
@@ -141,12 +148,15 @@ public sealed class ImportService(
         if (batch.Status == ImportBatchStatus.Cancelled) return BaseResponseDto<ImportBatchSummaryDto>.Fail("Cancelled import batch cannot be confirmed.");
         if (batch.Status != ImportBatchStatus.ReadyToImport) return BaseResponseDto<ImportBatchSummaryDto>.Fail("Only validated import batches can be confirmed.");
         if (batch.InvalidRows > 0) return BaseResponseDto<ImportBatchSummaryDto>.Fail("Import batch has invalid rows.");
+        if (batch.WorkflowStatus != WorkflowStatus.Approved)
+            return BaseResponseDto<ImportBatchSummaryDto>.Fail("يجب اعتماد ملف الاستيراد قبل تنفيذ الاستيراد النهائي.");
 
         await using var transaction = await dbContext.Database.BeginTransactionAsync(cancellationToken);
         try
         {
             var result = await handlerFactory.GetHandler(batch.ImportType).ConfirmImportAsync(batch.Id, cancellationToken);
             batch.Status = ImportBatchStatus.Imported;
+            batch.WorkflowStatus = WorkflowStatus.Closed;
             batch.ImportedRows = result.ImportedRows;
             batch.ImportedAt = DateTimeOffset.UtcNow;
             batch.ImportedByUserId = currentUser.UserId;
@@ -163,7 +173,7 @@ public sealed class ImportService(
             batch.ErrorSummary = ex.Message;
             await dbContext.SaveChangesAsync(cancellationToken);
             await auditLog.LogAsync("Import failed", tenantId, currentUser.UserId, nameof(ImportBatch), batch.Id.ToString(), newValues: ex.Message, cancellationToken: cancellationToken);
-            return BaseResponseDto<ImportBatchSummaryDto>.Fail("Import failed.", [ex.Message]);
+            throw;
         }
     }
 
@@ -173,6 +183,7 @@ public sealed class ImportService(
         if (batch is null) return BaseResponseDto<ImportBatchSummaryDto>.Fail("Import batch was not found.");
         if (batch.Status == ImportBatchStatus.Imported) return BaseResponseDto<ImportBatchSummaryDto>.Fail("Imported batch cannot be cancelled.");
         batch.Status = ImportBatchStatus.Cancelled;
+        batch.WorkflowStatus = WorkflowStatus.Cancelled;
         batch.Notes = request.Reason ?? batch.Notes;
         await dbContext.SaveChangesAsync(cancellationToken);
         await auditLog.LogAsync("Import cancelled", currentTenant.TenantId, currentUser.UserId, nameof(ImportBatch), batch.Id.ToString(), newValues: $"{batch.ImportType}|{request.Reason}", cancellationToken: cancellationToken);
@@ -186,7 +197,78 @@ public sealed class ImportService(
         return BaseResponseDto<ImportTemplateDto>.Ok(template);
     }
 
-    private static ImportBatchSummaryDto ToSummaryDto(ImportBatch x) => new(x.Id, x.ImportType, x.Status, x.FinancialYearId, x.AccountingPeriodId, x.OriginalFileName, x.TotalRows, x.ValidRows, x.InvalidRows, x.WarningRows, x.ImportedRows, x.UploadedAt, x.ValidatedAt, x.ImportedAt, x.ErrorSummary, x.Notes);
+    public async Task<BaseResponseDto<ImportBatchSummaryDto>> SubmitForReviewAsync(
+        Guid id,
+        SubmitWorkflowRequest request,
+        CancellationToken cancellationToken)
+    {
+        var batch = await dbContext.ImportBatches.FirstOrDefaultAsync(x => x.Id == id, cancellationToken);
+        if (batch is null) return BaseResponseDto<ImportBatchSummaryDto>.NotFound("ملف الاستيراد غير موجود.");
+        if (!workflowAccess.CanEdit(batch.WorkflowStatus))
+            return BaseResponseDto<ImportBatchSummaryDto>.Fail("لا يمكن إرسال ملف الاستيراد من حالته الحالية.");
+        if (batch.Status != ImportBatchStatus.ReadyToImport || batch.InvalidRows > 0)
+            return BaseResponseDto<ImportBatchSummaryDto>.Fail("يجب أن يكون ملف الاستيراد صالحًا بالكامل قبل إرساله للمراجعة.");
+        if (request.ReviewerUserId.HasValue && !await dbContext.ReviewerTenantAssignments.AnyAsync(
+                x => x.ReviewerUserId == request.ReviewerUserId && x.TenantId == batch.TenantId && x.IsActive,
+                cancellationToken))
+            return BaseResponseDto<ImportBatchSummaryDto>.Fail("المراجع المحدد غير مسند لهذه الشركة.");
+
+        batch.WorkflowStatus = WorkflowStatus.Submitted;
+        batch.AssignedReviewerUserId = request.ReviewerUserId;
+        await dbContext.SaveChangesAsync(cancellationToken);
+        await auditLog.LogAsync("Submitted", batch.TenantId, currentUser.UserId, nameof(ImportBatch), batch.Id.ToString(), cancellationToken: cancellationToken);
+        return BaseResponseDto<ImportBatchSummaryDto>.Ok(ToSummaryDto(batch), "تم إرسال ملف الاستيراد للمراجعة.");
+    }
+
+    public Task<BaseResponseDto<ImportBatchSummaryDto>> StartReviewAsync(Guid id, CancellationToken cancellationToken) =>
+        ChangeWorkflowAsync(id, WorkflowStatus.Submitted, WorkflowStatus.UnderReview, "ReviewStarted", null, cancellationToken);
+
+    public Task<BaseResponseDto<ImportBatchSummaryDto>> ApproveAsync(Guid id, CancellationToken cancellationToken) =>
+        ChangeWorkflowAsync(id, WorkflowStatus.UnderReview, WorkflowStatus.Approved, "Approved", null, cancellationToken);
+
+    public Task<BaseResponseDto<ImportBatchSummaryDto>> RejectAsync(Guid id, WorkflowDecisionRequest request, CancellationToken cancellationToken) =>
+        ChangeWorkflowAsync(id, WorkflowStatus.UnderReview, WorkflowStatus.Rejected, "Rejected", request.Reason, cancellationToken);
+
+    public Task<BaseResponseDto<ImportBatchSummaryDto>> ReturnForCorrectionAsync(Guid id, WorkflowDecisionRequest request, CancellationToken cancellationToken) =>
+        ChangeWorkflowAsync(id, WorkflowStatus.UnderReview, WorkflowStatus.ReturnedForCorrection, "ReturnedForCorrection", request.Reason, cancellationToken);
+
+    private async Task<BaseResponseDto<ImportBatchSummaryDto>> ChangeWorkflowAsync(
+        Guid id,
+        WorkflowStatus required,
+        WorkflowStatus target,
+        string action,
+        string? reason,
+        CancellationToken cancellationToken)
+    {
+        var batch = await dbContext.ImportBatches.FirstOrDefaultAsync(x => x.Id == id, cancellationToken);
+        if (batch is null) return BaseResponseDto<ImportBatchSummaryDto>.NotFound("ملف الاستيراد غير موجود.");
+        if (!await workflowAccess.CanReviewTenantAsync(batch.TenantId, cancellationToken))
+            return BaseResponseDto<ImportBatchSummaryDto>.Fail("ليس لديك صلاحية مراجعة ملفات هذه الشركة.");
+        if (batch.AssignedReviewerUserId.HasValue && batch.AssignedReviewerUserId != currentUser.UserId)
+            return BaseResponseDto<ImportBatchSummaryDto>.Fail("ملف الاستيراد مسند إلى مراجع آخر.");
+        if (batch.WorkflowStatus != required)
+            return BaseResponseDto<ImportBatchSummaryDto>.Fail("لا يمكن تنفيذ الإجراء من حالة ملف الاستيراد الحالية.");
+        if (target is WorkflowStatus.Rejected or WorkflowStatus.ReturnedForCorrection && string.IsNullOrWhiteSpace(reason))
+            return BaseResponseDto<ImportBatchSummaryDto>.Fail("يجب إدخال سبب واضح.");
+
+        batch.WorkflowStatus = target;
+        batch.AssignedReviewerUserId ??= currentUser.UserId;
+        await dbContext.SaveChangesAsync(cancellationToken);
+        await auditLog.LogAsync(action, batch.TenantId, currentUser.UserId, nameof(ImportBatch), batch.Id.ToString(), newValues: reason, cancellationToken: cancellationToken);
+        return BaseResponseDto<ImportBatchSummaryDto>.Ok(ToSummaryDto(batch), target switch
+        {
+            WorkflowStatus.UnderReview => "تم بدء مراجعة ملف الاستيراد.",
+            WorkflowStatus.Approved => "تم اعتماد ملف الاستيراد.",
+            WorkflowStatus.Rejected => "تم رفض ملف الاستيراد.",
+            _ => "تمت إعادة ملف الاستيراد للتصحيح."
+        });
+    }
+
+    private static ImportBatchSummaryDto ToSummaryDto(ImportBatch x) => new(x.Id, x.ImportType, x.Status, x.FinancialYearId, x.AccountingPeriodId, x.OriginalFileName, x.TotalRows, x.ValidRows, x.InvalidRows, x.WarningRows, x.ImportedRows, x.UploadedAt, x.ValidatedAt, x.ImportedAt, x.ErrorSummary, x.Notes)
+    {
+        ImportBatchNo = x.ImportBatchNo,
+        WorkflowStatus = x.WorkflowStatus
+    };
 
     private static ImportBatchRowDto ToRowDto(ImportBatchRow x) => new(
         x.Id,

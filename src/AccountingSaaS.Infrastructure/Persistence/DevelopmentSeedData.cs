@@ -58,6 +58,7 @@ public static class DevelopmentSeedData
         await EnsureTenantAccessAsync(dbContext, officeAdmin.Id, secondCompany.Id);
         await EnsureTenantAccessAsync(dbContext, accountant.Id, firstCompany.Id);
         await EnsureTenantAccessAsync(dbContext, reviewer.Id, firstCompany.Id);
+        await EnsureReviewerAssignmentAsync(dbContext, reviewer.Id, firstCompany.Id);
         await EnsureTenantAccessAsync(dbContext, owner.Id, firstCompany.Id);
         await EnsureTenantAccessAsync(dbContext, companyUser.Id, firstCompany.Id);
         await dbContext.SaveChangesAsync();
@@ -91,6 +92,7 @@ public static class DevelopmentSeedData
 
         tenant = new Tenant
         {
+            TenantNo = (await dbContext.Tenants.MaxAsync(x => (long?)x.TenantNo) ?? 0) + 1,
             CompanyName = companyName,
             CommercialRegistrationNo = registrationNo,
             TaxNumber = $"TAX-{registrationNo}",
@@ -119,6 +121,7 @@ public static class DevelopmentSeedData
             user = new ApplicationUser
             {
                 Id = Guid.NewGuid(),
+                UserNo = (await userManager.Users.MaxAsync(x => (long?)x.UserNo) ?? 0) + 1,
                 UserName = email,
                 Email = email,
                 NormalizedEmail = email.ToUpperInvariant(),
@@ -154,6 +157,21 @@ public static class DevelopmentSeedData
         if (!await dbContext.UserTenantAccesses.AnyAsync(x => x.UserId == userId && x.TenantId == tenantId))
         {
             dbContext.UserTenantAccesses.Add(new UserTenantAccess { UserId = userId, TenantId = tenantId });
+        }
+    }
+
+    private static async Task EnsureReviewerAssignmentAsync(AppDbContext dbContext, Guid userId, Guid tenantId)
+    {
+        if (!await dbContext.ReviewerTenantAssignments.AnyAsync(
+                x => x.ReviewerUserId == userId && x.TenantId == tenantId))
+        {
+            dbContext.ReviewerTenantAssignments.Add(new ReviewerTenantAssignment
+            {
+                ReviewerUserId = userId,
+                TenantId = tenantId,
+                IsActive = true,
+                CreatedAt = DateTimeOffset.UtcNow
+            });
         }
     }
 
@@ -336,6 +354,7 @@ public static class DevelopmentSeedData
         account = new Account
         {
             Id = Guid.NewGuid(),
+            AccountNo = (await dbContext.Accounts.MaxAsync(x => (long?)x.AccountNo) ?? 0) + 1,
             Code = code,
             NameAr = nameAr,
             NameEn = nameEn,
@@ -371,7 +390,13 @@ public static class DevelopmentSeedData
             return costCenter;
         }
 
-        costCenter = new CostCenter { Code = code, Name = name, IsActive = true };
+        costCenter = new CostCenter
+        {
+            CostCenterNo = (await dbContext.CostCenters.MaxAsync(x => (long?)x.CostCenterNo) ?? 0) + 1,
+            Code = code,
+            Name = name,
+            IsActive = true
+        };
         dbContext.CostCenters.Add(costCenter);
         await dbContext.SaveChangesAsync();
         return costCenter;
@@ -402,6 +427,7 @@ public static class DevelopmentSeedData
 
         dbContext.JournalEntries.Add(new JournalEntry
         {
+            JournalEntryNo = (await dbContext.JournalEntries.MaxAsync(x => (long?)x.JournalEntryNo) ?? 0) + 1,
             FinancialYearId = financialYearId,
             AccountingPeriodId = accountingPeriodId,
             EntryNumber = entryNumber,
@@ -444,6 +470,7 @@ public static class DevelopmentSeedData
         var fileInfo = new FileInfo(filePath);
         dbContext.Documents.Add(new Document
         {
+            DocumentNo = (await dbContext.Documents.MaxAsync(x => (long?)x.DocumentNo) ?? 0) + 1,
             FinancialYearId = financialYearId,
             AccountingPeriodId = accountingPeriodId,
             DocumentType = DocumentType.Invoice,
@@ -576,6 +603,7 @@ public static class DevelopmentSeedData
 
         var batch = new ImportBatch
         {
+            ImportBatchNo = (await dbContext.ImportBatches.MaxAsync(x => (long?)x.ImportBatchNo) ?? 0) + 1,
             ImportType = ImportType.Customers,
             Status = ImportBatchStatus.HasErrors,
             OriginalFileName = fileName,

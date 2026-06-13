@@ -53,6 +53,12 @@ public interface IJournalEntryService
     Task<BaseResponseDto<JournalEntryDto>> PostAsync(Guid id, PostJournalEntryRequest request, CancellationToken cancellationToken);
     Task<BaseResponseDto<JournalEntryDto>> ReverseAsync(Guid id, ReverseJournalEntryRequest request, CancellationToken cancellationToken);
     Task<BaseResponseDto<JournalEntryDto>> CancelAsync(Guid id, CancellationToken cancellationToken);
+    Task<BaseResponseDto<JournalEntryDto>> SubmitForReviewAsync(Guid id, SubmitJournalEntryRequest request, CancellationToken cancellationToken);
+    Task<BaseResponseDto<JournalEntryDto>> StartReviewAsync(Guid id, CancellationToken cancellationToken);
+    Task<BaseResponseDto<JournalEntryDto>> ApproveAsync(Guid id, CancellationToken cancellationToken);
+    Task<BaseResponseDto<JournalEntryDto>> RejectAsync(Guid id, ReviewJournalEntryRequest request, CancellationToken cancellationToken);
+    Task<BaseResponseDto<JournalEntryDto>> ReturnForCorrectionAsync(Guid id, ReviewJournalEntryRequest request, CancellationToken cancellationToken);
+    Task<BaseResponseDto<PaginatedResult<JournalEntryDto>>> GetMyReviewQueueAsync(AccountingPagedRequest request, CancellationToken cancellationToken);
 }
 
 public interface IDocumentService
@@ -61,6 +67,11 @@ public interface IDocumentService
     Task<BaseResponseDto<PaginatedResult<DocumentDto>>> GetPagedAsync(AccountingPagedRequest request, CancellationToken cancellationToken);
     Task<BaseResponseDto<DocumentDownloadDto>> DownloadAsync(Guid id, CancellationToken cancellationToken);
     Task<BaseResponseDto<object>> DeleteAsync(Guid id, CancellationToken cancellationToken);
+    Task<BaseResponseDto<DocumentDto>> SubmitForReviewAsync(Guid id, SubmitWorkflowRequest request, CancellationToken cancellationToken);
+    Task<BaseResponseDto<DocumentDto>> StartReviewAsync(Guid id, CancellationToken cancellationToken);
+    Task<BaseResponseDto<DocumentDto>> ApproveAsync(Guid id, CancellationToken cancellationToken);
+    Task<BaseResponseDto<DocumentDto>> RejectAsync(Guid id, WorkflowDecisionRequest request, CancellationToken cancellationToken);
+    Task<BaseResponseDto<DocumentDto>> ReturnForCorrectionAsync(Guid id, WorkflowDecisionRequest request, CancellationToken cancellationToken);
 }
 
 public sealed record DocumentDownloadDto(string FilePath, string OriginalFileName, string ContentType);
@@ -93,6 +104,7 @@ public interface IClosingSubmissionService
     Task<BaseResponseDto<ClosingSubmissionDto>> StartReviewAsync(Guid accountingPeriodId, CancellationToken cancellationToken);
     Task<BaseResponseDto<ClosingSubmissionDto>> ApproveClosingAsync(Guid accountingPeriodId, CancellationToken cancellationToken);
     Task<BaseResponseDto<ClosingSubmissionDto>> RejectClosingAsync(Guid accountingPeriodId, RejectClosingRequest request, CancellationToken cancellationToken);
+    Task<BaseResponseDto<ClosingSubmissionDto>> ReturnForCorrectionAsync(Guid accountingPeriodId, ReturnClosingForCorrectionRequest request, CancellationToken cancellationToken);
     Task<BaseResponseDto<ClosingSubmissionDto>> ClosePeriodAsync(Guid accountingPeriodId, CancellationToken cancellationToken);
     Task<BaseResponseDto<ClosingSubmissionDto>> ReopenPeriodAsync(Guid accountingPeriodId, ReopenClosingRequest request, CancellationToken cancellationToken);
 }

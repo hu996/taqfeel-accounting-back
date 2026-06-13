@@ -1,15 +1,21 @@
 using System.Security.Claims;
 using AccountingSaaS.Application.Interfaces;
 using AccountingSaaS.Domain.Constants;
+using AccountingSaaS.Infrastructure.Persistence;
 using AccountingSaaS.Shared.Responses;
 
 namespace AccountingSaaS.Api.Middleware;
 
 public sealed class TenantResolverMiddleware(RequestDelegate next)
 {
-    public async Task InvokeAsync(HttpContext context, ICurrentTenantService currentTenant, ITenantAccessService tenantAccessService)
+    public async Task InvokeAsync(
+        HttpContext context,
+        ICurrentTenantService currentTenant,
+        ITenantAccessService tenantAccessService,
+        AppDbContext dbContext)
     {
         currentTenant.Clear();
+        dbContext.DisableTenantFilter = false;
 
         if (context.User.Identity?.IsAuthenticated != true)
         {
@@ -20,19 +26,26 @@ public sealed class TenantResolverMiddleware(RequestDelegate next)
         var roles = context.User.FindAll(ClaimTypes.Role).Select(x => x.Value).ToList();
         var userId = Guid.TryParse(context.User.FindFirstValue(ClaimTypes.NameIdentifier), out var parsedUserId) ? parsedUserId : (Guid?)null;
         var userTenantId = Guid.TryParse(context.User.FindFirstValue("tenant_id"), out var parsedTenantId) ? parsedTenantId : (Guid?)null;
-        var isAdminContext = roles.Contains(Roles.SuperAdmin, StringComparer.OrdinalIgnoreCase)
+        var canSwitchTenant = roles.Contains(Roles.SuperAdmin, StringComparer.OrdinalIgnoreCase)
             || roles.Contains(Roles.AccountingOfficeAdmin, StringComparer.OrdinalIgnoreCase)
-            || roles.Contains(Roles.Accountant, StringComparer.OrdinalIgnoreCase);
+            || roles.Contains(Roles.Accountant, StringComparer.OrdinalIgnoreCase)
+            || roles.Contains(Roles.Reviewer, StringComparer.OrdinalIgnoreCase);
         var tenantHeader = context.Request.Headers["X-Tenant-Id"].FirstOrDefault();
+        var isSuperAdmin = roles.Contains(Roles.SuperAdmin, StringComparer.OrdinalIgnoreCase);
 
-        if (!isAdminContext)
+        if (isSuperAdmin && string.IsNullOrWhiteSpace(tenantHeader))
+        {
+            dbContext.DisableTenantFilter = true;
+        }
+
+        if (!canSwitchTenant)
         {
             if (userId is not null && userTenantId.HasValue)
             {
                 if (!await tenantAccessService.CanAccessTenantAsync(userId.Value, userTenantId.Value, context.RequestAborted))
                 {
                     context.Response.StatusCode = StatusCodes.Status403Forbidden;
-                    await context.Response.WriteAsJsonAsync(BaseResponseDto<object>.Fail("Invalid tenant access.", ["The user's tenant is inactive or unavailable."]));
+                    await context.Response.WriteAsJsonAsync(BaseResponseDto<object>.Fail("لا يمكن الوصول إلى بيانات هذه الشركة."));
                     return;
                 }
 
@@ -46,7 +59,7 @@ public sealed class TenantResolverMiddleware(RequestDelegate next)
         if (!string.IsNullOrWhiteSpace(tenantHeader) && !Guid.TryParse(tenantHeader, out _))
         {
             context.Response.StatusCode = StatusCodes.Status400BadRequest;
-            await context.Response.WriteAsJsonAsync(BaseResponseDto<object>.Fail("Invalid tenant header.", ["X-Tenant-Id must be a valid GUID."]));
+            await context.Response.WriteAsJsonAsync(BaseResponseDto<object>.Fail("معرّف الشركة المرسل غير صالح."));
             return;
         }
 
@@ -55,7 +68,7 @@ public sealed class TenantResolverMiddleware(RequestDelegate next)
             if (userId is null || !await tenantAccessService.CanAccessTenantAsync(userId.Value, selectedTenantId, context.RequestAborted))
             {
                 context.Response.StatusCode = StatusCodes.Status403Forbidden;
-                await context.Response.WriteAsJsonAsync(BaseResponseDto<object>.Fail("Invalid tenant access.", ["The selected tenant is inactive or not assigned to this user."]));
+                await context.Response.WriteAsJsonAsync(BaseResponseDto<object>.Fail("الشركة المحددة غير مسندة إلى المستخدم أو غير نشطة."));
                 return;
             }
 

@@ -4,8 +4,11 @@ namespace AccountingSaaS.Domain.Entities;
 
 public sealed class ImportBatch : TenantEntity
 {
+    public long ImportBatchNo { get; set; }
     public ImportType ImportType { get; set; }
     public ImportBatchStatus Status { get; set; } = ImportBatchStatus.Uploaded;
+    public WorkflowStatus WorkflowStatus { get; set; } = WorkflowStatus.Draft;
+    public Guid? AssignedReviewerUserId { get; set; }
     public string OriginalFileName { get; set; } = string.Empty;
     public string StoredFileName { get; set; } = string.Empty;
     public string FilePath { get; set; } = string.Empty;

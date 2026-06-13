@@ -13,7 +13,8 @@ public sealed class ClosingTaskService(
     AppDbContext dbContext,
     ICurrentTenantService currentTenant,
     ICurrentUserService currentUser,
-    IAuditLogService auditLog)
+    IAuditLogService auditLog,
+    IWorkflowAccessService workflowAccess)
     : AccountingServiceBase(dbContext, currentTenant), IClosingTaskService
 {
     public async Task<BaseResponseDto<IReadOnlyList<ClosingTaskDto>>> GetTasksByPeriodAsync(
@@ -46,7 +47,7 @@ public sealed class ClosingTaskService(
                 task.AssignedToUserId = request.AssignedToUserId;
                 task.DueDate = request.DueDate;
             },
-            "Closing task assigned",
+            "Updated",
             cancellationToken);
 
         return result;
@@ -67,7 +68,7 @@ public sealed class ClosingTaskService(
                 task.Status = ClosingTaskStatus.InProgress;
                 task.RejectionReason = null;
             },
-            "Closing task started",
+            "Updated",
             cancellationToken);
 
         return result;
@@ -86,7 +87,7 @@ public sealed class ClosingTaskService(
                 task.SubmittedAt = DateTimeOffset.UtcNow;
                 task.SubmittedByUserId = currentUser.UserId;
             },
-            "Closing task submitted",
+            "Submitted",
             cancellationToken);
 
         return result;
@@ -105,8 +106,9 @@ public sealed class ClosingTaskService(
                 task.ApprovedAt = DateTimeOffset.UtcNow;
                 task.ApprovedByUserId = currentUser.UserId;
             },
-            "Closing task approved",
-            cancellationToken);
+            "Approved",
+            cancellationToken,
+            requiresReviewerAccess: true);
 
         return result;
     }
@@ -126,7 +128,7 @@ public sealed class ClosingTaskService(
             {
                 task.Status = ClosingTaskStatus.NotApplicable;
             },
-            "Closing task marked not applicable",
+            "Updated",
             cancellationToken);
 
         return result;
@@ -139,7 +141,7 @@ public sealed class ClosingTaskService(
     {
         if (string.IsNullOrWhiteSpace(request.Reason))
         {
-            return BaseResponseDto<ClosingTaskDto>.Fail("A rejection reason is required.");
+            return BaseResponseDto<ClosingTaskDto>.Fail("يجب إدخال سبب الرفض.");
         }
 
         var result = await UpdateTaskAsync(
@@ -152,8 +154,9 @@ public sealed class ClosingTaskService(
                 task.RejectedByUserId = currentUser.UserId;
                 task.RejectionReason = request.Reason.Trim();
             },
-            "Closing task rejected",
-            cancellationToken);
+            "Rejected",
+            cancellationToken,
+            requiresReviewerAccess: true);
 
         return result;
     }
@@ -163,14 +166,15 @@ public sealed class ClosingTaskService(
         IReadOnlyCollection<ClosingTaskStatus> allowedStatuses,
         Action<ClosingTask> update,
         string action,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        bool requiresReviewerAccess = false)
     {
         var task = await DbContext.ClosingTasks
             .FindAsync([id], cancellationToken);
 
         if (task is null)
         {
-            return BaseResponseDto<ClosingTaskDto>.Fail("Closing task was not found.");
+            return BaseResponseDto<ClosingTaskDto>.NotFound("مهمة التقفيل غير موجودة.");
         }
 
         var isPeriodClosed = await PeriodIsClosedAsync(
@@ -180,13 +184,28 @@ public sealed class ClosingTaskService(
         if (isPeriodClosed)
         {
             return BaseResponseDto<ClosingTaskDto>.Fail(
-                "Closing tasks cannot be modified in a closed period.");
+                "لا يمكن تعديل مهام التقفيل داخل فترة مغلقة.");
+        }
+
+        if (requiresReviewerAccess &&
+            !await workflowAccess.CanReviewTenantAsync(task.TenantId, cancellationToken))
+        {
+            return BaseResponseDto<ClosingTaskDto>.Fail("ليس لديك صلاحية مراجعة مهام هذه الشركة.");
+        }
+
+        if (!requiresReviewerAccess &&
+            task.AssignedToUserId.HasValue &&
+            task.AssignedToUserId != currentUser.UserId &&
+            !currentUser.IsSuperAdmin &&
+            !currentUser.IsAccountingOfficeAdmin)
+        {
+            return BaseResponseDto<ClosingTaskDto>.Fail("مهمة التقفيل مسندة إلى مستخدم آخر.");
         }
 
         if (!allowedStatuses.Contains(task.Status))
         {
             return BaseResponseDto<ClosingTaskDto>.Fail(
-                $"Closing task cannot be changed from status {task.Status}.");
+                "لا يمكن تنفيذ الإجراء من حالة مهمة التقفيل الحالية.");
         }
 
         update(task);
@@ -203,6 +222,16 @@ public sealed class ClosingTaskService(
 
         var dto = AccountingMapper.ToDto(task);
 
-        return BaseResponseDto<ClosingTaskDto>.Ok(dto, action);
+        var message = task.Status switch
+        {
+            ClosingTaskStatus.InProgress => "تم بدء تنفيذ مهمة التقفيل.",
+            ClosingTaskStatus.Submitted => "تم إرسال مهمة التقفيل للمراجعة.",
+            ClosingTaskStatus.Approved => "تم اعتماد مهمة التقفيل.",
+            ClosingTaskStatus.Rejected => "تم رفض مهمة التقفيل وإعادتها للتصحيح.",
+            ClosingTaskStatus.NotApplicable => "تم تحديد المهمة كغير منطبقة.",
+            _ => "تم تحديث مهمة التقفيل."
+        };
+
+        return BaseResponseDto<ClosingTaskDto>.Ok(dto, message);
     }
 }

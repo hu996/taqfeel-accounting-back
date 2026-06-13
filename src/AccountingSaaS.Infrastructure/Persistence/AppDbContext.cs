@@ -16,6 +16,8 @@ public sealed class AppDbContext(
     public DbSet<Permission> Permissions => Set<Permission>();
     public DbSet<RolePermission> RolePermissions => Set<RolePermission>();
     public DbSet<UserTenantAccess> UserTenantAccesses => Set<UserTenantAccess>();
+    public DbSet<ReviewerTenantAssignment> ReviewerTenantAssignments => Set<ReviewerTenantAssignment>();
+    public DbSet<NumberSequence> NumberSequences => Set<NumberSequence>();
     public DbSet<RefreshToken> RefreshTokens => Set<RefreshToken>();
     public DbSet<AuditLog> AuditLogs => Set<AuditLog>();
     public DbSet<FinancialYear> FinancialYears => Set<FinancialYear>();
@@ -32,7 +34,7 @@ public sealed class AppDbContext(
     public DbSet<ImportBatch> ImportBatches => Set<ImportBatch>();
     public DbSet<ImportBatchRow> ImportBatchRows => Set<ImportBatchRow>();
 
-    public bool DisableTenantFilter { get; set; } = true;
+    public bool DisableTenantFilter { get; set; }
 
     protected override void OnModelCreating(ModelBuilder builder)
     {

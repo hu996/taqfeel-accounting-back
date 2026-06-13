@@ -25,7 +25,8 @@ public sealed class ValidationFilter(IServiceProvider serviceProvider) : IAsyncA
 
         if (errors.Count > 0)
         {
-            context.Result = new BadRequestObjectResult(BaseResponseDto<object>.Fail("Validation failed.", errors.Distinct()));
+            context.Result = new BadRequestObjectResult(
+                BaseResponseDto<object>.Fail("يرجى مراجعة البيانات المدخلة.", errors.Distinct()));
             return;
         }
 

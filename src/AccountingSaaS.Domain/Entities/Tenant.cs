@@ -2,6 +2,7 @@ namespace AccountingSaaS.Domain.Entities;
 
 public sealed class Tenant : BaseEntity
 {
+    public long TenantNo { get; set; }
     public string CompanyName { get; set; } = string.Empty;
     public string? CommercialRegistrationNo { get; set; }
     public string? TaxNumber { get; set; }

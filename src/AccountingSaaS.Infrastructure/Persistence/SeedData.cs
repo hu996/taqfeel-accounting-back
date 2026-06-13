@@ -73,11 +73,12 @@ public static class SeedData
                 || x.StartsWith("AccountingReports.") || x.StartsWith("Imports.") || x == "AuditLogs.View"),
             [Roles.Accountant] = Permissions.All.Where(x =>
                 x.StartsWith("FinancialYears.") || x.StartsWith("AccountingPeriods.") || x.StartsWith("ChartOfAccounts.")
-                || x.StartsWith("CostCenters.") || x.StartsWith("JournalEntries.")
-                || x is "Documents.View" or "Documents.Upload" or "Documents.Download" or "Documents.Delete"
+                || x.StartsWith("CostCenters.") || x is "JournalEntries.View" or "JournalEntries.Create" or "JournalEntries.Update"
+                    or "JournalEntries.Post" or "JournalEntries.Reverse" or "JournalEntries.Cancel" or "JournalEntries.Submit"
+                || x is "Documents.View" or "Documents.Upload" or "Documents.Download" or "Documents.Delete" or "Documents.Submit"
                 || x.StartsWith("ClosingChecklist.") || x.StartsWith("ClosingTasks.") || x.StartsWith("ClosingSubmissions.")
-                || x.StartsWith("AccountingReports.") || x == "Imports.View" || x == "Imports.Upload" || x == "Imports.Confirm" || x == "Imports.DownloadTemplate" || x == "Accounting.View" || x == "Reports.View"),
-            [Roles.Reviewer] = ["Accounting.View", "Reports.View", "ClosingTasks.View", "ClosingTasks.Approve", "ClosingTasks.Reject", "ClosingSubmissions.View", "ClosingSubmissions.Review", "ClosingSubmissions.Approve", "ClosingSubmissions.Reject", "AccountingReports.TrialBalance", "AccountingReports.GeneralLedger", "AccountingReports.AccountStatement", "AccountingReports.ClosingProgress", "Imports.View", "AuditLogs.View"],
+                || x.StartsWith("AccountingReports.") || x == "Imports.View" || x == "Imports.Upload" || x == "Imports.Confirm" || x == "Imports.Submit" || x == "Imports.DownloadTemplate" || x == "Accounting.View" || x == "Reports.View"),
+            [Roles.Reviewer] = ["Accounting.View", "Reports.View", "JournalEntries.View", "JournalEntries.Review", "JournalEntries.Approve", "JournalEntries.Reject", "JournalEntries.ReturnForCorrection", "Documents.View", "Documents.Download", "Documents.Review", "Documents.Approve", "Documents.Reject", "ClosingTasks.View", "ClosingTasks.Approve", "ClosingTasks.Reject", "ClosingSubmissions.View", "ClosingSubmissions.Review", "ClosingSubmissions.Approve", "ClosingSubmissions.Reject", "AccountingReports.TrialBalance", "AccountingReports.GeneralLedger", "AccountingReports.AccountStatement", "AccountingReports.ClosingProgress", "Imports.View", "Imports.Review", "Imports.Approve", "Imports.Reject", "AuditLogs.View"],
             [Roles.CompanyOwner] = ["Accounting.View", "Reports.View", "Documents.View", "Documents.Upload", "Documents.Download", "ClosingTasks.View", "ClosingSubmissions.View", "AccountingReports.TrialBalance", "AccountingReports.GeneralLedger", "AccountingReports.AccountStatement", "AccountingReports.ClosingProgress", "Imports.View", "Imports.Upload", "Imports.DownloadTemplate"],
             [Roles.CompanyUser] = ["Documents.View", "Documents.Upload", "Documents.Download", "Reports.View", "ClosingTasks.View", "ClosingTasks.Submit", "AccountingReports.ClosingProgress", "Imports.Upload", "Imports.DownloadTemplate"]
         };
@@ -110,6 +111,7 @@ public static class SeedData
             user = new ApplicationUser
             {
                 Id = Guid.NewGuid(),
+                UserNo = (await userManager.Users.MaxAsync(x => (long?)x.UserNo) ?? 0) + 1,
                 UserName = email,
                 Email = email,
                 NormalizedEmail = email.ToUpperInvariant(),

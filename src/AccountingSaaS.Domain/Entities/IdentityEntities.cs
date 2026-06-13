@@ -4,6 +4,7 @@ namespace AccountingSaaS.Domain.Entities;
 
 public sealed class ApplicationUser : IdentityUser<Guid>
 {
+    public long UserNo { get; set; }
     public string FullName { get; set; } = string.Empty;
     public Guid? TenantId { get; set; }
     public Tenant? Tenant { get; set; }

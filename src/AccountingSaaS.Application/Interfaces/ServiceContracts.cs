@@ -1,4 +1,5 @@
 using AccountingSaaS.Application.DTOs;
+using AccountingSaaS.Domain.Enums;
 using AccountingSaaS.Shared.Responses;
 
 namespace AccountingSaaS.Application.Interfaces;
@@ -21,4 +22,15 @@ public interface ITenantAccessService
 public interface IAuditLogService
 {
     Task LogAsync(string action, Guid? tenantId = null, Guid? userId = null, string? entityName = null, string? entityId = null, string? oldValues = null, string? newValues = null, string? ipAddress = null, string? userAgent = null, CancellationToken cancellationToken = default);
+}
+
+public interface INumberSequenceService
+{
+    Task<long> NextAsync(string sequenceKey, Guid? tenantId, CancellationToken cancellationToken);
+}
+
+public interface IWorkflowAccessService
+{
+    bool CanEdit(WorkflowStatus status, bool allowApprovedOverride = false);
+    Task<bool> CanReviewTenantAsync(Guid tenantId, CancellationToken cancellationToken);
 }

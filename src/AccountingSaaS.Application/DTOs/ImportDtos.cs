@@ -23,7 +23,11 @@ public sealed record ImportBatchSummaryDto(
     DateTimeOffset? ValidatedAt,
     DateTimeOffset? ImportedAt,
     string? ErrorSummary,
-    string? Notes);
+    string? Notes)
+{
+    public long ImportBatchNo { get; init; }
+    public WorkflowStatus WorkflowStatus { get; init; }
+}
 
 public sealed record ImportBatchRowDto(
     Guid Id,
@@ -42,7 +46,11 @@ public sealed record ImportPreviewDto(
     int ValidRows,
     int InvalidRows,
     int WarningRows,
-    IReadOnlyList<ImportBatchRowDto> Rows);
+    IReadOnlyList<ImportBatchRowDto> Rows)
+{
+    public long ImportBatchNo { get; init; }
+    public WorkflowStatus WorkflowStatus { get; init; }
+}
 
 public sealed record ImportBatchDetailsDto(ImportBatchSummaryDto Summary, PaginatedResult<ImportBatchRowDto> Rows);
 public sealed record ImportTemplateDto(string FileName, string ContentType, byte[] Content);

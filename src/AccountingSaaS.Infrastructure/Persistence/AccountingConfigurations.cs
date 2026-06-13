@@ -29,6 +29,7 @@ public sealed class AccountConfiguration : IEntityTypeConfiguration<Account>
     public void Configure(EntityTypeBuilder<Account> builder)
     {
         builder.Property(x => x.Code).HasMaxLength(50).IsRequired();
+        builder.HasIndex(x => new { x.TenantId, x.AccountNo }).IsUnique();
         builder.Property(x => x.NameAr).HasMaxLength(200);
         builder.Property(x => x.NameEn).HasMaxLength(200).IsRequired();
         builder.HasIndex(x => new { x.TenantId, x.Code }).IsUnique();
@@ -41,6 +42,7 @@ public sealed class CostCenterConfiguration : IEntityTypeConfiguration<CostCente
     public void Configure(EntityTypeBuilder<CostCenter> builder)
     {
         builder.Property(x => x.Code).HasMaxLength(50).IsRequired();
+        builder.HasIndex(x => new { x.TenantId, x.CostCenterNo }).IsUnique();
         builder.Property(x => x.Name).HasMaxLength(200).IsRequired();
         builder.HasIndex(x => new { x.TenantId, x.Code }).IsUnique();
     }
@@ -51,6 +53,9 @@ public sealed class JournalEntryConfiguration : IEntityTypeConfiguration<Journal
     public void Configure(EntityTypeBuilder<JournalEntry> builder)
     {
         builder.Property(x => x.EntryNumber).HasMaxLength(60).IsRequired();
+        builder.Property(x => x.ReviewReason).HasMaxLength(500);
+        builder.HasIndex(x => new { x.TenantId, x.JournalEntryNo }).IsUnique();
+        builder.HasIndex(x => new { x.TenantId, x.WorkflowStatus, x.AssignedReviewerUserId });
         builder.Property(x => x.Description).HasMaxLength(500).IsRequired();
         builder.Property(x => x.TotalDebit).HasColumnType("decimal(18,2)");
         builder.Property(x => x.TotalCredit).HasColumnType("decimal(18,2)");
@@ -83,6 +88,8 @@ public sealed class DocumentConfiguration : IEntityTypeConfiguration<Document>
     public void Configure(EntityTypeBuilder<Document> builder)
     {
         builder.Property(x => x.OriginalFileName).HasMaxLength(255).IsRequired();
+        builder.HasIndex(x => new { x.TenantId, x.DocumentNo }).IsUnique();
+        builder.HasIndex(x => new { x.TenantId, x.WorkflowStatus, x.AssignedReviewerUserId });
         builder.Property(x => x.StoredFileName).HasMaxLength(255).IsRequired();
         builder.Property(x => x.FilePath).HasMaxLength(500).IsRequired();
         builder.Property(x => x.ContentType).HasMaxLength(120).IsRequired();
@@ -133,6 +140,7 @@ public sealed class ClosingSubmissionConfiguration : IEntityTypeConfiguration<Cl
         builder.Property(x => x.Notes).HasMaxLength(1000);
         builder.Property(x => x.RejectionReason).HasMaxLength(500);
         builder.Property(x => x.ReopenReason).HasMaxLength(500);
+        builder.HasIndex(x => new { x.TenantId, x.Status, x.AssignedReviewerUserId });
         builder.HasIndex(x => new { x.TenantId, x.AccountingPeriodId }).IsUnique();
         builder.HasIndex(x => new { x.TenantId, x.FinancialYearId });
     }

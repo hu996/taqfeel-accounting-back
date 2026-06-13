@@ -28,7 +28,7 @@ public sealed class AccountingPeriodService(
 
         if (year is null)
         {
-            return BaseResponseDto<AccountingPeriodDto>.Fail("السنة المالية غير موجودة.");
+            return BaseResponseDto<AccountingPeriodDto>.NotFound("السنة المالية غير موجودة.");
         }
 
         if (request.StartDate < year.StartDate || request.EndDate > year.EndDate)
@@ -85,7 +85,7 @@ public sealed class AccountingPeriodService(
 
         if (period is null)
         {
-            return BaseResponseDto<AccountingPeriodDto>.Fail("الفترة المحاسبية غير موجودة.");
+            return BaseResponseDto<AccountingPeriodDto>.NotFound("الفترة المحاسبية غير موجودة.");
         }
 
         if (period.Status == AccountingPeriodStatus.Closed)
@@ -142,7 +142,7 @@ public sealed class AccountingPeriodService(
 
         if (period is null)
         {
-            return BaseResponseDto<AccountingPeriodDto>.Fail("الفترة المحاسبية غير موجودة.");
+            return BaseResponseDto<AccountingPeriodDto>.NotFound("الفترة المحاسبية غير موجودة.");
         }
 
         return BaseResponseDto<AccountingPeriodDto>.Ok(
@@ -221,7 +221,7 @@ public sealed class AccountingPeriodService(
 
         if (period is null)
         {
-            return BaseResponseDto<AccountingPeriodDto>.Fail("الفترة المحاسبية غير موجودة.");
+            return BaseResponseDto<AccountingPeriodDto>.NotFound("الفترة المحاسبية غير موجودة.");
         }
 
         if (period.Status != AccountingPeriodStatus.Closed)
@@ -261,7 +261,7 @@ public sealed class AccountingPeriodService(
 
         if (period is null)
         {
-            return BaseResponseDto<AccountingPeriodDto>.Fail("الفترة المحاسبية غير موجودة.");
+            return BaseResponseDto<AccountingPeriodDto>.NotFound("الفترة المحاسبية غير موجودة.");
         }
 
         if (status == AccountingPeriodStatus.Closed)

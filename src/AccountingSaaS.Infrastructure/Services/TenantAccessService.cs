@@ -21,9 +21,16 @@ public sealed class TenantAccessService(AppDbContext dbContext, ICurrentUserServ
             return true;
         }
 
-        if (currentUser.IsAccountingOfficeAdmin || currentUser.Roles.Contains(Roles.Accountant))
+        if (currentUser.IsAccountingOfficeAdmin ||
+            currentUser.Roles.Contains(Roles.Accountant) ||
+            currentUser.Roles.Contains(Roles.Reviewer))
         {
-            return await dbContext.UserTenantAccesses.AnyAsync(x => x.UserId == userId && x.TenantId == tenantId, cancellationToken);
+            return await dbContext.UserTenantAccesses.AnyAsync(
+                    x => x.UserId == userId && x.TenantId == tenantId,
+                    cancellationToken)
+                || await dbContext.ReviewerTenantAssignments.AnyAsync(
+                    x => x.ReviewerUserId == userId && x.TenantId == tenantId && x.IsActive,
+                    cancellationToken);
         }
 
         return await dbContext.Users.AnyAsync(x => x.Id == userId && x.TenantId == tenantId && x.IsActive, cancellationToken);
@@ -41,7 +48,9 @@ public sealed class TenantAccessService(AppDbContext dbContext, ICurrentUserServ
 
         if (!currentUser.IsSuperAdmin)
         {
-            if (currentUser.IsAccountingOfficeAdmin || currentUser.Roles.Contains(Roles.Accountant))
+            if (currentUser.IsAccountingOfficeAdmin ||
+                currentUser.Roles.Contains(Roles.Accountant) ||
+                currentUser.Roles.Contains(Roles.Reviewer))
             {
                 query = query.Where(x => dbContext.UserTenantAccesses.Any(a => a.UserId == userId && a.TenantId == x.Id));
             }
@@ -73,5 +82,8 @@ public sealed class TenantAccessService(AppDbContext dbContext, ICurrentUserServ
         tenant.Address,
         tenant.Phone,
         tenant.Email,
-        tenant.IsActive);
+        tenant.IsActive)
+    {
+        TenantNo = tenant.TenantNo
+    };
 }

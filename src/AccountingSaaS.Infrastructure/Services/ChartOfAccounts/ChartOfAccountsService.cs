@@ -12,7 +12,8 @@ public sealed class ChartOfAccountsService(
     AppDbContext dbContext,
     ICurrentTenantService currentTenant,
     ICurrentUserService currentUser,
-    IAuditLogService auditLog)
+    IAuditLogService auditLog,
+    INumberSequenceService numberSequence)
     : AccountingServiceBase(dbContext, currentTenant), IChartOfAccountsService
 {
     public async Task<BaseResponseDto<AccountDto>> CreateAccountAsync(
@@ -21,30 +22,30 @@ public sealed class ChartOfAccountsService(
     {
         _ = TenantId;
 
-        var codeExists = await DbContext.Accounts.AnyAsync(
-            x => x.Code == request.Code,
-            cancellationToken);
-
-        if (codeExists)
-        {
-            return BaseResponseDto<AccountDto>.Fail("Account code already exists.");
-        }
-
+        Account? parent = null;
         if (request.ParentAccountId.HasValue)
         {
-            var parentExists = await DbContext.Accounts.AnyAsync(
+            parent = await DbContext.Accounts.FirstOrDefaultAsync(
                 x => x.Id == request.ParentAccountId,
                 cancellationToken);
 
-            if (!parentExists)
+            if (parent is null)
             {
-                return BaseResponseDto<AccountDto>.Fail("Parent account was not found.");
+                return BaseResponseDto<AccountDto>.NotFound("الحساب الأب غير موجود.");
             }
         }
 
+        var accountNo = await numberSequence.NextAsync("AccountNo", TenantId, cancellationToken);
+        var parentPart = parent is null ? 1 : parent.AccountNo;
+        var codeSequence = await numberSequence.NextAsync(
+            $"AccountCode:{(int)request.AccountType}:{parent?.Id.ToString() ?? "ROOT"}",
+            TenantId,
+            cancellationToken);
+
         var account = new Account
         {
-            Code = request.Code,
+            AccountNo = accountNo,
+            Code = $"{(int)request.AccountType}-{parentPart:000}-{codeSequence:0000}",
             NameAr = request.NameAr,
             NameEn = request.NameEn,
             AccountType = request.AccountType,
@@ -59,7 +60,7 @@ public sealed class ChartOfAccountsService(
         await DbContext.SaveChangesAsync(cancellationToken);
 
         await auditLog.LogAsync(
-            "Account created",
+            "Created",
             TenantId,
             currentUser.UserId,
             nameof(Account),
@@ -69,7 +70,7 @@ public sealed class ChartOfAccountsService(
 
         return BaseResponseDto<AccountDto>.Ok(
             AccountingMapper.ToDto(account),
-            "Account created.");
+            "تم إنشاء الحساب بنجاح.");
     }
 
     public async Task<BaseResponseDto<AccountDto>> UpdateAccountAsync(
@@ -83,23 +84,12 @@ public sealed class ChartOfAccountsService(
 
         if (account is null)
         {
-            return BaseResponseDto<AccountDto>.Fail("Account was not found.");
-        }
-
-        var codeExists = await DbContext.Accounts.AnyAsync(
-            x =>
-                x.Id != id &&
-                x.Code == request.Code,
-            cancellationToken);
-
-        if (codeExists)
-        {
-            return BaseResponseDto<AccountDto>.Fail("Account code already exists.");
+            return BaseResponseDto<AccountDto>.NotFound("الحساب غير موجود.");
         }
 
         if (request.ParentAccountId == id)
         {
-            return BaseResponseDto<AccountDto>.Fail("Account cannot be its own parent.");
+            return BaseResponseDto<AccountDto>.Fail("لا يمكن أن يكون الحساب أبًا لنفسه.");
         }
 
         if (request.ParentAccountId.HasValue)
@@ -110,13 +100,12 @@ public sealed class ChartOfAccountsService(
 
             if (!parentExists)
             {
-                return BaseResponseDto<AccountDto>.Fail("Parent account was not found.");
+                return BaseResponseDto<AccountDto>.NotFound("الحساب الأب غير موجود.");
             }
         }
 
         var oldCode = account.Code;
 
-        account.Code = request.Code;
         account.NameAr = request.NameAr;
         account.NameEn = request.NameEn;
         account.AccountType = request.AccountType;
@@ -127,7 +116,7 @@ public sealed class ChartOfAccountsService(
         await DbContext.SaveChangesAsync(cancellationToken);
 
         await auditLog.LogAsync(
-            "Account updated",
+            "Updated",
             TenantId,
             currentUser.UserId,
             nameof(Account),
@@ -138,7 +127,7 @@ public sealed class ChartOfAccountsService(
 
         return BaseResponseDto<AccountDto>.Ok(
             AccountingMapper.ToDto(account),
-            "Account updated.");
+            "تم تحديث الحساب بنجاح.");
     }
 
     public async Task<BaseResponseDto<AccountDto>> GetAccountAsync(
@@ -151,7 +140,7 @@ public sealed class ChartOfAccountsService(
 
         if (account is null)
         {
-            return BaseResponseDto<AccountDto>.Fail("Account was not found.");
+            return BaseResponseDto<AccountDto>.NotFound("الحساب غير موجود.");
         }
 
         return BaseResponseDto<AccountDto>.Ok(
@@ -224,7 +213,7 @@ public sealed class ChartOfAccountsService(
 
         if (account is null)
         {
-            return BaseResponseDto<AccountDto>.Fail("Account was not found.");
+            return BaseResponseDto<AccountDto>.NotFound("الحساب غير موجود.");
         }
 
         account.IsActive = active;
@@ -232,7 +221,7 @@ public sealed class ChartOfAccountsService(
         await DbContext.SaveChangesAsync(cancellationToken);
 
         await auditLog.LogAsync(
-            active ? "Account activated" : "Account deactivated",
+            "Updated",
             TenantId,
             currentUser.UserId,
             nameof(Account),
@@ -241,6 +230,6 @@ public sealed class ChartOfAccountsService(
 
         return BaseResponseDto<AccountDto>.Ok(
             AccountingMapper.ToDto(account),
-            active ? "Account activated." : "Account deactivated.");
+            active ? "تم تفعيل الحساب." : "تم إيقاف الحساب.");
     }
 }

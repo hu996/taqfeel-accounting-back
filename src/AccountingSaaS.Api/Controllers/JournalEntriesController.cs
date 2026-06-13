@@ -64,4 +64,52 @@ public sealed class JournalEntriesController(IJournalEntryService service) : Acc
         var result = await service.CancelAsync(id, cancellationToken);
         return ApiResult(result);
     }
+
+    [HttpPost("SubmitForReview/{id:guid}")]
+    [HasPermission("JournalEntries.Submit")]
+    public async Task<IActionResult> SubmitForReview(
+        Guid id,
+        SubmitJournalEntryRequest request,
+        CancellationToken cancellationToken) =>
+        ApiResult(await service.SubmitForReviewAsync(id, request, cancellationToken));
+
+    [HttpPost("StartReview/{id:guid}")]
+    [HasPermission("JournalEntries.Review")]
+    public async Task<IActionResult> StartReview(Guid id, CancellationToken cancellationToken) =>
+        ApiResult(await service.StartReviewAsync(id, cancellationToken));
+
+    [HttpPost("Approve/{id:guid}")]
+    [HasPermission("JournalEntries.Approve")]
+    public async Task<IActionResult> Approve(Guid id, CancellationToken cancellationToken) =>
+        ApiResult(await service.ApproveAsync(id, cancellationToken));
+
+    [HttpPost("Reject/{id:guid}")]
+    [HasPermission("JournalEntries.Reject")]
+    public async Task<IActionResult> Reject(
+        Guid id,
+        ReviewJournalEntryRequest request,
+        CancellationToken cancellationToken) =>
+        ApiResult(await service.RejectAsync(id, request, cancellationToken));
+
+    [HttpPost("ReturnForCorrection/{id:guid}")]
+    [HasPermission("JournalEntries.ReturnForCorrection")]
+    public async Task<IActionResult> ReturnForCorrection(
+        Guid id,
+        ReviewJournalEntryRequest request,
+        CancellationToken cancellationToken) =>
+        ApiResult(await service.ReturnForCorrectionAsync(id, request, cancellationToken));
+
+    [HttpGet("GetMyReviewQueue")]
+    [HasPermission("JournalEntries.Review")]
+    public async Task<IActionResult> GetMyReviewQueue(
+        [FromQuery] AccountingPagedRequest request,
+        CancellationToken cancellationToken) =>
+        ApiResult(await service.GetMyReviewQueueAsync(request, cancellationToken));
+
+    [HttpGet("GetMyCompanyData")]
+    [HasPermission("JournalEntries.View")]
+    public async Task<IActionResult> GetMyCompanyData(
+        [FromQuery] AccountingPagedRequest request,
+        CancellationToken cancellationToken) =>
+        ApiResult(await service.GetPagedAsync(request, cancellationToken));
 }

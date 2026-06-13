@@ -19,7 +19,7 @@ public sealed class ImportsController(IImportService service) : AccountingContro
     {
         if (file.Length == 0)
         {
-            return BadRequest(BaseResponseDto<object>.Fail("Validation failed.", ["File is required."]));
+            return ApiResult(BaseResponseDto<object>.Fail("الملف مطلوب."));
         }
 
         await using var stream = file.OpenReadStream();
@@ -54,9 +54,34 @@ public sealed class ImportsController(IImportService service) : AccountingContro
         var response = await service.GenerateTemplateAsync(importType, cancellationToken);
         if (!response.Success || response.Data is null)
         {
-            return BadRequest(response);
+            return ApiResult(response);
         }
 
         return File(response.Data.Content, response.Data.ContentType, response.Data.FileName);
     }
+
+    [HttpPost("SubmitForReview/{id:guid}")]
+    [HasPermission("Imports.Submit")]
+    public async Task<IActionResult> SubmitForReview(Guid id, SubmitWorkflowRequest request, CancellationToken cancellationToken) =>
+        ApiResult(await service.SubmitForReviewAsync(id, request, cancellationToken));
+
+    [HttpPost("StartReview/{id:guid}")]
+    [HasPermission("Imports.Review")]
+    public async Task<IActionResult> StartReview(Guid id, CancellationToken cancellationToken) =>
+        ApiResult(await service.StartReviewAsync(id, cancellationToken));
+
+    [HttpPost("Approve/{id:guid}")]
+    [HasPermission("Imports.Approve")]
+    public async Task<IActionResult> Approve(Guid id, CancellationToken cancellationToken) =>
+        ApiResult(await service.ApproveAsync(id, cancellationToken));
+
+    [HttpPost("Reject/{id:guid}")]
+    [HasPermission("Imports.Reject")]
+    public async Task<IActionResult> Reject(Guid id, WorkflowDecisionRequest request, CancellationToken cancellationToken) =>
+        ApiResult(await service.RejectAsync(id, request, cancellationToken));
+
+    [HttpPost("ReturnForCorrection/{id:guid}")]
+    [HasPermission("Imports.Reject")]
+    public async Task<IActionResult> ReturnForCorrection(Guid id, WorkflowDecisionRequest request, CancellationToken cancellationToken) =>
+        ApiResult(await service.ReturnForCorrectionAsync(id, request, cancellationToken));
 }

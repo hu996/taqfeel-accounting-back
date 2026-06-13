@@ -16,7 +16,8 @@ public sealed class TenantsController(
     AppDbContext dbContext,
     ICurrentUserService currentUser,
     ITenantAccessService tenantAccessService,
-    IAuditLogService auditLogService) : AccountingControllerBase
+    IAuditLogService auditLogService,
+    INumberSequenceService numberSequence) : AccountingControllerBase
 {
     [HttpGet("GetTenants")]
     [HasPermission("Tenants.View")]
@@ -33,7 +34,7 @@ public sealed class TenantsController(
         }
 
         var tenants = await query.OrderBy(x => x.CompanyName).Select(x => ToDto(x)).ToListAsync(cancellationToken);
-        return Ok(BaseResponseDto<IReadOnlyList<TenantDto>>.Ok(tenants));
+        return ApiResult(BaseResponseDto<IReadOnlyList<TenantDto>>.Ok(tenants));
     }
 
     [HttpGet("GetTenantById/{id:guid}")]
@@ -47,7 +48,7 @@ public sealed class TenantsController(
 
         var tenant = await dbContext.Tenants.Where(x => x.Id == id).Select(x => ToDto(x)).FirstOrDefaultAsync(cancellationToken);
         return ApiResult(tenant is null
-            ? BaseResponseDto<TenantDto>.Fail("Tenant was not found.")
+            ? BaseResponseDto<TenantDto>.NotFound("الشركة غير موجودة.")
             : BaseResponseDto<TenantDto>.Ok(tenant));
     }
 
@@ -62,6 +63,7 @@ public sealed class TenantsController(
 
         var tenant = new Tenant
         {
+            TenantNo = await numberSequence.NextAsync("TenantNo", null, cancellationToken),
             CompanyName = request.CompanyName,
             CommercialRegistrationNo = request.CommercialRegistrationNo,
             TaxNumber = request.TaxNumber,
@@ -72,8 +74,8 @@ public sealed class TenantsController(
         };
         dbContext.Tenants.Add(tenant);
         await dbContext.SaveChangesAsync(cancellationToken);
-        await auditLogService.LogAsync("Tenant created", tenant.Id, currentUser.UserId, nameof(Tenant), tenant.Id.ToString(), newValues: tenant.CompanyName, cancellationToken: cancellationToken);
-        return Ok(BaseResponseDto<TenantDto>.Ok(ToDto(tenant), "Tenant created."));
+        await auditLogService.LogAsync("Created", tenant.Id, currentUser.UserId, nameof(Tenant), tenant.Id.ToString(), newValues: tenant.CompanyName, cancellationToken: cancellationToken);
+        return ApiResult(BaseResponseDto<TenantDto>.Ok(ToDto(tenant), "تم إنشاء الشركة بنجاح."));
     }
 
     [HttpPut("UpdateTenant/{id:guid}")]
@@ -88,7 +90,7 @@ public sealed class TenantsController(
         var tenant = await dbContext.Tenants.FindAsync([id], cancellationToken);
         if (tenant is null)
         {
-            return ApiResult(BaseResponseDto<TenantDto>.Fail("Tenant was not found."));
+            return ApiResult(BaseResponseDto<TenantDto>.NotFound("الشركة غير موجودة."));
         }
 
         var oldValue = tenant.CompanyName;
@@ -99,8 +101,8 @@ public sealed class TenantsController(
         tenant.Phone = request.Phone;
         tenant.Email = request.Email;
         await dbContext.SaveChangesAsync(cancellationToken);
-        await auditLogService.LogAsync("Tenant updated", tenant.Id, currentUser.UserId, nameof(Tenant), tenant.Id.ToString(), oldValue, tenant.CompanyName, cancellationToken: cancellationToken);
-        return Ok(BaseResponseDto<TenantDto>.Ok(ToDto(tenant), "Tenant updated."));
+        await auditLogService.LogAsync("Updated", tenant.Id, currentUser.UserId, nameof(Tenant), tenant.Id.ToString(), oldValue, tenant.CompanyName, cancellationToken: cancellationToken);
+        return ApiResult(BaseResponseDto<TenantDto>.Ok(ToDto(tenant), "تم تحديث بيانات الشركة."));
     }
 
     [HttpPatch("ActivateTenant/{id:guid}")]
@@ -121,20 +123,25 @@ public sealed class TenantsController(
         var tenant = await dbContext.Tenants.FindAsync([id], cancellationToken);
         if (tenant is null)
         {
-            return ApiResult(BaseResponseDto<TenantDto>.Fail("Tenant was not found."));
+            return ApiResult(BaseResponseDto<TenantDto>.NotFound("الشركة غير موجودة."));
         }
 
         tenant.IsActive = isActive;
         await dbContext.SaveChangesAsync(cancellationToken);
         await auditLogService.LogAsync(isActive ? "Tenant activated" : "Tenant deactivated", tenant.Id, currentUser.UserId, nameof(Tenant), tenant.Id.ToString(), cancellationToken: cancellationToken);
-        return Ok(BaseResponseDto<TenantDto>.Ok(ToDto(tenant), isActive ? "Tenant activated." : "Tenant deactivated."));
+        return ApiResult(BaseResponseDto<TenantDto>.Ok(
+            ToDto(tenant),
+            isActive ? "تم تفعيل الشركة." : "تم إيقاف الشركة."));
     }
 
     private async Task<bool> CanAccessTenantAsync(Guid tenantId, CancellationToken cancellationToken) =>
         currentUser.UserId is { } userId && await tenantAccessService.CanAccessTenantAsync(userId, tenantId, cancellationToken);
 
-    private static TenantDto ToDto(Tenant tenant) => new(tenant.Id, tenant.CompanyName, tenant.CommercialRegistrationNo, tenant.TaxNumber, tenant.Address, tenant.Phone, tenant.Email, tenant.IsActive);
+    private static TenantDto ToDto(Tenant tenant) => new(tenant.Id, tenant.CompanyName, tenant.CommercialRegistrationNo, tenant.TaxNumber, tenant.Address, tenant.Phone, tenant.Email, tenant.IsActive)
+    {
+        TenantNo = tenant.TenantNo
+    };
 
     private ObjectResult ForbiddenResponse() =>
-        StatusCode(StatusCodes.Status403Forbidden, BaseResponseDto<object>.Fail("Forbidden.", ["You are not allowed to perform this action."]));
+        StatusCode(StatusCodes.Status403Forbidden, BaseResponseDto<object>.Fail("ليس لديك صلاحية لتنفيذ هذا الإجراء."));
 }

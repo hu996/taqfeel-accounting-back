@@ -12,16 +12,19 @@ public sealed class CostCenterService : AccountingServiceBase, ICostCenterServic
 {
     private readonly ICurrentUserService _currentUser;
     private readonly IAuditLogService _auditLog;
+    private readonly INumberSequenceService _numberSequence;
 
     public CostCenterService(
         AppDbContext dbContext,
         ICurrentTenantService currentTenant,
         ICurrentUserService currentUser,
-        IAuditLogService auditLog)
+        IAuditLogService auditLog,
+        INumberSequenceService numberSequence)
         : base(dbContext, currentTenant)
     {
         _currentUser = currentUser;
         _auditLog = auditLog;
+        _numberSequence = numberSequence;
     }
 
     public async Task<BaseResponseDto<CostCenterDto>> CreateAsync(
@@ -30,30 +33,17 @@ public sealed class CostCenterService : AccountingServiceBase, ICostCenterServic
     {
         var tenantId = TenantId;
 
-        var code = request.Code?.Trim();
         var name = request.Name?.Trim();
 
-        if (string.IsNullOrWhiteSpace(code))
-            return BaseResponseDto<CostCenterDto>.Fail("Cost center code is required.");
-
         if (string.IsNullOrWhiteSpace(name))
-            return BaseResponseDto<CostCenterDto>.Fail("Cost center name is required.");
+            return BaseResponseDto<CostCenterDto>.Fail("اسم مركز التكلفة مطلوب.");
 
-        var exists = await DbContext.CostCenters
-            .AnyAsync(x =>
-                x.TenantId == tenantId &&
-                !x.IsDeleted &&
-                x.Code == code,
-                cancellationToken);
-
-        if (exists)
-            return BaseResponseDto<CostCenterDto>.Fail("Cost center code already exists.");
+        var costCenterNo = await _numberSequence.NextAsync("CostCenterNo", tenantId, cancellationToken);
 
         var costCenter = new CostCenter
         {
-            Id = Guid.NewGuid(),
-            TenantId = tenantId,
-            Code = code,
+            CostCenterNo = costCenterNo,
+            Code = $"CC-{costCenterNo:000000}",
             Name = name,
             IsActive = true,
             IsDeleted = false,
@@ -65,7 +55,7 @@ public sealed class CostCenterService : AccountingServiceBase, ICostCenterServic
         await DbContext.SaveChangesAsync(cancellationToken);
 
         await _auditLog.LogAsync(
-            "Cost center created",
+            "Created",
             tenantId,
             _currentUser.UserId,
             nameof(CostCenter),
@@ -75,7 +65,7 @@ public sealed class CostCenterService : AccountingServiceBase, ICostCenterServic
 
         return BaseResponseDto<CostCenterDto>.Ok(
             AccountingMapper.ToDto(costCenter),
-            "Cost center created.");
+            "تم إنشاء مركز التكلفة بنجاح.");
     }
 
     public async Task<BaseResponseDto<CostCenterDto>> UpdateAsync(
@@ -85,14 +75,10 @@ public sealed class CostCenterService : AccountingServiceBase, ICostCenterServic
     {
         var tenantId = TenantId;
 
-        var code = request.Code?.Trim();
         var name = request.Name?.Trim();
 
-        if (string.IsNullOrWhiteSpace(code))
-            return BaseResponseDto<CostCenterDto>.Fail("Cost center code is required.");
-
         if (string.IsNullOrWhiteSpace(name))
-            return BaseResponseDto<CostCenterDto>.Fail("Cost center name is required.");
+            return BaseResponseDto<CostCenterDto>.Fail("اسم مركز التكلفة مطلوب.");
 
         var costCenter = await DbContext.CostCenters
             .FirstOrDefaultAsync(x =>
@@ -102,20 +88,7 @@ public sealed class CostCenterService : AccountingServiceBase, ICostCenterServic
                 cancellationToken);
 
         if (costCenter is null)
-            return BaseResponseDto<CostCenterDto>.Fail("Cost center was not found.");
-
-        var codeExists = await DbContext.CostCenters
-            .AnyAsync(x =>
-                x.Id != id &&
-                x.TenantId == tenantId &&
-                !x.IsDeleted &&
-                x.Code == code,
-                cancellationToken);
-
-        if (codeExists)
-            return BaseResponseDto<CostCenterDto>.Fail("Cost center code already exists.");
-
-        costCenter.Code = code;
+            return BaseResponseDto<CostCenterDto>.NotFound("مركز التكلفة غير موجود.");
         costCenter.Name = name;
         costCenter.UpdatedAt = DateTimeOffset.UtcNow;
         costCenter.UpdatedByUserId = _currentUser.UserId;
@@ -123,7 +96,7 @@ public sealed class CostCenterService : AccountingServiceBase, ICostCenterServic
         await DbContext.SaveChangesAsync(cancellationToken);
 
         await _auditLog.LogAsync(
-            "Cost center updated",
+            "Updated",
             tenantId,
             _currentUser.UserId,
             nameof(CostCenter),
@@ -132,7 +105,7 @@ public sealed class CostCenterService : AccountingServiceBase, ICostCenterServic
 
         return BaseResponseDto<CostCenterDto>.Ok(
             AccountingMapper.ToDto(costCenter),
-            "Cost center updated.");
+            "تم تحديث مركز التكلفة بنجاح.");
     }
 
     public async Task<BaseResponseDto<PaginatedResult<CostCenterDto>>> GetPagedAsync(
@@ -202,7 +175,7 @@ public sealed class CostCenterService : AccountingServiceBase, ICostCenterServic
                 cancellationToken);
 
         if (costCenter is null)
-            return BaseResponseDto<CostCenterDto>.Fail("Cost center was not found.");
+            return BaseResponseDto<CostCenterDto>.NotFound("مركز التكلفة غير موجود.");
 
         costCenter.IsActive = active;
         costCenter.UpdatedAt = DateTimeOffset.UtcNow;
@@ -211,7 +184,7 @@ public sealed class CostCenterService : AccountingServiceBase, ICostCenterServic
         await DbContext.SaveChangesAsync(cancellationToken);
 
         await _auditLog.LogAsync(
-            active ? "Cost center activated" : "Cost center deactivated",
+            "Updated",
             tenantId,
             _currentUser.UserId,
             nameof(CostCenter),
@@ -220,6 +193,6 @@ public sealed class CostCenterService : AccountingServiceBase, ICostCenterServic
 
         return BaseResponseDto<CostCenterDto>.Ok(
             AccountingMapper.ToDto(costCenter),
-            active ? "Cost center activated." : "Cost center deactivated.");
+            active ? "تم تفعيل مركز التكلفة." : "تم إيقاف مركز التكلفة.");
     }
 }

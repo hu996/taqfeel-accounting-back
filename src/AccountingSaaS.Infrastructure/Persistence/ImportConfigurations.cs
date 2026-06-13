@@ -8,6 +8,8 @@ public sealed class ImportBatchConfiguration : IEntityTypeConfiguration<ImportBa
 {
     public void Configure(EntityTypeBuilder<ImportBatch> builder)
     {
+        builder.HasIndex(x => new { x.TenantId, x.ImportBatchNo }).IsUnique();
+        builder.HasIndex(x => new { x.TenantId, x.WorkflowStatus, x.AssignedReviewerUserId });
         builder.Property(x => x.OriginalFileName).HasMaxLength(255).IsRequired();
         builder.Property(x => x.StoredFileName).HasMaxLength(255).IsRequired();
         builder.Property(x => x.FilePath).HasMaxLength(500).IsRequired();

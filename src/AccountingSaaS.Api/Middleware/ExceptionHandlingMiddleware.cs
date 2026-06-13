@@ -3,7 +3,7 @@ using AccountingSaaS.Shared.Responses;
 
 namespace AccountingSaaS.Api.Middleware;
 
-public sealed class ExceptionHandlingMiddleware(RequestDelegate next, ILogger<ExceptionHandlingMiddleware> logger, IHostEnvironment environment)
+public sealed class ExceptionHandlingMiddleware(RequestDelegate next, ILogger<ExceptionHandlingMiddleware> logger)
 {
     public async Task InvokeAsync(HttpContext context)
     {
@@ -16,8 +16,8 @@ public sealed class ExceptionHandlingMiddleware(RequestDelegate next, ILogger<Ex
             logger.LogError(ex, "Unhandled API exception");
             context.Response.StatusCode = (int)HttpStatusCode.InternalServerError;
             context.Response.ContentType = "application/json";
-            var errors = environment.IsProduction() ? ["An unexpected error occurred."] : new[] { ex.Message };
-            await context.Response.WriteAsJsonAsync(BaseResponseDto<object>.Fail("An error occurred.", errors));
+            await context.Response.WriteAsJsonAsync(
+                BaseResponseDto<object>.Fail("حدث خطأ غير متوقع في الخادم. يرجى المحاولة مرة أخرى."));
         }
     }
 }

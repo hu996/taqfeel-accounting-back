@@ -19,7 +19,8 @@ public sealed class UsersController(
     IAuditLogService auditLogService,
     ICurrentUserService currentUser,
     ICurrentTenantService currentTenant,
-    ITenantAccessService tenantAccessService) : AccountingControllerBase
+    ITenantAccessService tenantAccessService,
+    INumberSequenceService numberSequence) : AccountingControllerBase
 {
     [HttpGet("GetUsers")]
     [HasPermission("Users.View")]
@@ -31,10 +32,10 @@ public sealed class UsersController(
         var result = new List<UserDto>();
         foreach (var user in users)
         {
-            result.Add(new UserDto(user.Id, user.FullName, user.Email!, user.PhoneNumber, user.TenantId, user.IsActive, (await userManager.GetRolesAsync(user)).ToList()));
+            result.Add(ToDto(user, (await userManager.GetRolesAsync(user)).ToList()));
         }
 
-        return Ok(BaseResponseDto<IReadOnlyList<UserDto>>.Ok(result));
+        return ApiResult(BaseResponseDto<IReadOnlyList<UserDto>>.Ok(result));
     }
 
     [HttpPost("AddUser")]
@@ -66,6 +67,7 @@ public sealed class UsersController(
         var user = new ApplicationUser
         {
             Id = Guid.NewGuid(),
+            UserNo = await numberSequence.NextAsync("UserNo", null, cancellationToken),
             FullName = request.FullName,
             Email = request.Email,
             UserName = request.Email,
@@ -92,11 +94,22 @@ public sealed class UsersController(
         foreach (var accessTenantId in request.TenantAccessIds.Distinct())
         {
             dbContext.UserTenantAccesses.Add(new UserTenantAccess { UserId = user.Id, TenantId = accessTenantId });
+            if (requestedRoles.Contains(Roles.Reviewer, StringComparer.OrdinalIgnoreCase))
+            {
+                dbContext.ReviewerTenantAssignments.Add(new ReviewerTenantAssignment
+                {
+                    ReviewerUserId = user.Id,
+                    TenantId = accessTenantId,
+                    IsActive = true,
+                    CreatedAt = DateTimeOffset.UtcNow,
+                    CreatedByUserId = currentUser.UserId
+                });
+            }
         }
 
         await dbContext.SaveChangesAsync(cancellationToken);
         await auditLogService.LogAsync("User created", user.TenantId, currentUser.UserId, nameof(ApplicationUser), user.Id.ToString(), newValues: user.Email, cancellationToken: cancellationToken);
-        return Ok(BaseResponseDto<UserDto>.Ok(new UserDto(user.Id, user.FullName, user.Email!, user.PhoneNumber, user.TenantId, user.IsActive, requestedRoles), "User created."));
+        return ApiResult(BaseResponseDto<UserDto>.Ok(ToDto(user, requestedRoles), "تم إنشاء المستخدم بنجاح."));
     }
 
     [HttpPut("UpdateUser/{id:guid}")]
@@ -140,7 +153,7 @@ public sealed class UsersController(
         }
 
         await auditLogService.LogAsync("User updated", user.TenantId, currentUser.UserId, nameof(ApplicationUser), user.Id.ToString(), oldValue, $"{user.FullName}|{user.PhoneNumber}|{user.TenantId}|{user.IsActive}", cancellationToken: cancellationToken);
-        return Ok(BaseResponseDto<UserDto>.Ok(new UserDto(user.Id, user.FullName, user.Email!, user.PhoneNumber, user.TenantId, user.IsActive, (await userManager.GetRolesAsync(user)).ToList()), "User updated."));
+        return ApiResult(BaseResponseDto<UserDto>.Ok(ToDto(user, (await userManager.GetRolesAsync(user)).ToList()), "تم تحديث المستخدم بنجاح."));
     }
 
     [HttpPost("AssignRoles/{id:guid}")]
@@ -150,7 +163,7 @@ public sealed class UsersController(
         var user = await userManager.FindByIdAsync(id.ToString());
         if (user is null)
         {
-            return ApiResult(BaseResponseDto<object>.Fail("User was not found."));
+            return ApiResult(BaseResponseDto<object>.NotFound("المستخدم غير موجود."));
         }
 
         if (!await CanManageUserAsync(user, cancellationToken))
@@ -178,7 +191,7 @@ public sealed class UsersController(
         }
 
         await auditLogService.LogAsync("Roles assigned", user.TenantId, currentUser.UserId, nameof(ApplicationUser), user.Id.ToString(), string.Join(",", existing), string.Join(",", newRoles), cancellationToken: cancellationToken);
-        return Ok(BaseResponseDto<object>.Ok(null, "Roles assigned."));
+        return ApiResult(BaseResponseDto<object>.Ok(null, "تم تحديث أدوار المستخدم."));
     }
 
     [HttpPost("AssignTenantAccess/{id:guid}")]
@@ -197,14 +210,28 @@ public sealed class UsersController(
         }
 
         dbContext.UserTenantAccesses.RemoveRange(dbContext.UserTenantAccesses.Where(x => x.UserId == id));
+        dbContext.ReviewerTenantAssignments.RemoveRange(
+            dbContext.ReviewerTenantAssignments.Where(x => x.ReviewerUserId == id));
+        var isReviewer = await userManager.IsInRoleAsync(user, Roles.Reviewer);
         foreach (var tenantId in request.TenantIds.Distinct())
         {
             dbContext.UserTenantAccesses.Add(new UserTenantAccess { UserId = id, TenantId = tenantId });
+            if (isReviewer)
+            {
+                dbContext.ReviewerTenantAssignments.Add(new ReviewerTenantAssignment
+                {
+                    ReviewerUserId = id,
+                    TenantId = tenantId,
+                    IsActive = true,
+                    CreatedAt = DateTimeOffset.UtcNow,
+                    CreatedByUserId = currentUser.UserId
+                });
+            }
         }
 
         await dbContext.SaveChangesAsync(cancellationToken);
         await auditLogService.LogAsync("Tenant access assigned", userId: currentUser.UserId, entityName: nameof(UserTenantAccess), entityId: id.ToString(), newValues: string.Join(",", request.TenantIds), cancellationToken: cancellationToken);
-        return Ok(BaseResponseDto<object>.Ok(null, "Tenant access assigned."));
+        return ApiResult(BaseResponseDto<object>.Ok(null, "تم تحديث الشركات المسندة للمستخدم."));
     }
 
     private IQueryable<ApplicationUser> ApplyUserScope(IQueryable<ApplicationUser> query)
@@ -310,6 +337,12 @@ public sealed class UsersController(
         || role.Equals(Roles.CompanyOwner, StringComparison.OrdinalIgnoreCase)
         || role.Equals(Roles.CompanyUser, StringComparison.OrdinalIgnoreCase);
 
+    private static UserDto ToDto(ApplicationUser user, IReadOnlyList<string> roles) =>
+        new(user.Id, user.FullName, user.Email!, user.PhoneNumber, user.TenantId, user.IsActive, roles)
+        {
+            UserNo = user.UserNo
+        };
+
     private ObjectResult ForbiddenResponse() =>
-        StatusCode(StatusCodes.Status403Forbidden, BaseResponseDto<object>.Fail("Forbidden.", ["You are not allowed to perform this action."]));
+        StatusCode(StatusCodes.Status403Forbidden, BaseResponseDto<object>.Fail("ليس لديك صلاحية لتنفيذ هذا الإجراء."));
 }

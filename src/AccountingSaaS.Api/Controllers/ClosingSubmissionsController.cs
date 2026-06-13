@@ -69,6 +69,14 @@ public sealed class ClosingSubmissionsController(IClosingSubmissionService servi
         return ApiResult(result);
     }
 
+    [HttpPost("ReturnForCorrection/{accountingPeriodId:guid}")]
+    [HasPermission("ClosingSubmissions.Reject")]
+    public async Task<IActionResult> ReturnForCorrection(
+        Guid accountingPeriodId,
+        ReturnClosingForCorrectionRequest request,
+        CancellationToken cancellationToken) =>
+        ApiResult(await service.ReturnForCorrectionAsync(accountingPeriodId, request, cancellationToken));
+
     [HttpPost("ClosePeriod/{accountingPeriodId:guid}")]
     [HasPermission("ClosingSubmissions.ClosePeriod")]
     public async Task<IActionResult> ClosePeriod(

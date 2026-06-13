@@ -113,7 +113,10 @@ public abstract class ImportHandlerBase(AppDbContext dbContext) : IImportHandler
         JsonSerializer.Deserialize<Dictionary<string, string?>>(json) ?? [];
 }
 
-public sealed class ChartOfAccountsImportHandler(AppDbContext dbContext) : ImportHandlerBase(dbContext)
+public sealed class ChartOfAccountsImportHandler(
+    AppDbContext dbContext,
+    INumberSequenceService numberSequence,
+    ICurrentTenantService currentTenant) : ImportHandlerBase(dbContext)
 {
     public override ImportType SupportedType => ImportType.ChartOfAccounts;
     public override IReadOnlyList<string> TemplateHeaders => ["Code", "NameAr", "NameEn", "AccountType", "NormalBalance", "ParentCode", "IsPostingAccount", "IsActive"];
@@ -150,9 +153,27 @@ public sealed class ChartOfAccountsImportHandler(AppDbContext dbContext) : Impor
         {
             var data = JsonToDictionary(row.NormalizedJson!);
             var parent = !string.IsNullOrWhiteSpace(data["ParentCode"]) ? await DbContext.Accounts.FirstOrDefaultAsync(x => x.Code == data["ParentCode"], cancellationToken) ?? created.GetValueOrDefault(data["ParentCode"]!) : null;
-            var account = new Account { Code = data["Code"]!, NameAr = data["NameAr"]!, NameEn = data["NameEn"] ?? data["NameAr"]!, AccountType = Enum.Parse<AccountType>(data["AccountType"]!), NormalBalance = Enum.Parse<NormalBalance>(data["NormalBalance"]!), ParentAccountId = parent?.Id, IsPostingAccount = bool.Parse(data["IsPostingAccount"]!), IsActive = bool.Parse(data["IsActive"]!) };
+            var tenantId = currentTenant.TenantId ?? throw new InvalidOperationException("Tenant context is required.");
+            var accountType = Enum.Parse<AccountType>(data["AccountType"]!);
+            var accountNo = await numberSequence.NextAsync("AccountNo", tenantId, cancellationToken);
+            var codeNo = await numberSequence.NextAsync(
+                $"AccountCode:{(int)accountType}:{parent?.Id.ToString() ?? "ROOT"}",
+                tenantId,
+                cancellationToken);
+            var account = new Account
+            {
+                AccountNo = accountNo,
+                Code = $"{(int)accountType}-{(parent?.AccountNo ?? 1):000}-{codeNo:0000}",
+                NameAr = data["NameAr"]!,
+                NameEn = data["NameEn"] ?? data["NameAr"]!,
+                AccountType = accountType,
+                NormalBalance = Enum.Parse<NormalBalance>(data["NormalBalance"]!),
+                ParentAccountId = parent?.Id,
+                IsPostingAccount = bool.Parse(data["IsPostingAccount"]!),
+                IsActive = bool.Parse(data["IsActive"]!)
+            };
             DbContext.Accounts.Add(account);
-            created[account.Code] = account;
+            created[data["Code"]!] = account;
             row.Status = ImportRowStatus.Imported; row.ImportedEntityName = nameof(Account); row.ImportedEntityId = account.Id.ToString();
         }
 
@@ -161,7 +182,10 @@ public sealed class ChartOfAccountsImportHandler(AppDbContext dbContext) : Impor
     }
 }
 
-public sealed class CostCentersImportHandler(AppDbContext dbContext) : ImportHandlerBase(dbContext)
+public sealed class CostCentersImportHandler(
+    AppDbContext dbContext,
+    INumberSequenceService numberSequence,
+    ICurrentTenantService currentTenant) : ImportHandlerBase(dbContext)
 {
     public override ImportType SupportedType => ImportType.CostCenters;
     public override IReadOnlyList<string> TemplateHeaders => ["Code", "Name", "IsActive"];
@@ -188,7 +212,15 @@ public sealed class CostCentersImportHandler(AppDbContext dbContext) : ImportHan
         foreach (var row in rows)
         {
             var data = JsonToDictionary(row.NormalizedJson!);
-            var entity = new CostCenter { Code = data["Code"]!, Name = data["Name"]!, IsActive = bool.Parse(data["IsActive"]!) };
+            var tenantId = currentTenant.TenantId ?? throw new InvalidOperationException("Tenant context is required.");
+            var costCenterNo = await numberSequence.NextAsync("CostCenterNo", tenantId, cancellationToken);
+            var entity = new CostCenter
+            {
+                CostCenterNo = costCenterNo,
+                Code = $"CC-{costCenterNo:000000}",
+                Name = data["Name"]!,
+                IsActive = bool.Parse(data["IsActive"]!)
+            };
             DbContext.CostCenters.Add(entity);
             row.Status = ImportRowStatus.Imported; row.ImportedEntityName = nameof(CostCenter); row.ImportedEntityId = entity.Id.ToString();
         }
@@ -198,7 +230,10 @@ public sealed class CostCentersImportHandler(AppDbContext dbContext) : ImportHan
     }
 }
 
-public sealed class OpeningBalancesImportHandler(AppDbContext dbContext) : ImportHandlerBase(dbContext)
+public sealed class OpeningBalancesImportHandler(
+    AppDbContext dbContext,
+    INumberSequenceService numberSequence,
+    ICurrentTenantService currentTenant) : ImportHandlerBase(dbContext)
 {
     public override ImportType SupportedType => ImportType.OpeningBalances;
     public override IReadOnlyList<string> TemplateHeaders => ["AccountCode", "Debit", "Credit", "CostCenterCode", "Description"];
@@ -263,7 +298,19 @@ public sealed class OpeningBalancesImportHandler(AppDbContext dbContext) : Impor
         var period = await periodQuery.OrderBy(x => x.StartDate).FirstOrDefaultAsync(cancellationToken)
             ?? throw new InvalidOperationException("An open accounting period is required for opening balances.");
 
-        var entry = new JournalEntry { FinancialYearId = yearId, AccountingPeriodId = period.Id, EntryDate = period.StartDate, EntryNumber = $"OB-{DateTimeOffset.UtcNow:yyyyMMddHHmmss}", Description = "Opening balances import", Status = JournalEntryStatus.Draft };
+        var tenantId = currentTenant.TenantId ?? throw new InvalidOperationException("Tenant context is required.");
+        var journalEntryNo = await numberSequence.NextAsync("JournalEntryNo", tenantId, cancellationToken);
+        var yearNumber = await DbContext.FinancialYears.Where(x => x.Id == yearId).Select(x => x.StartDate.Year).FirstAsync(cancellationToken);
+        var entry = new JournalEntry
+        {
+            JournalEntryNo = journalEntryNo,
+            FinancialYearId = yearId,
+            AccountingPeriodId = period.Id,
+            EntryDate = period.StartDate,
+            EntryNumber = $"JE-{yearNumber}-{journalEntryNo:000000}",
+            Description = "قيد أرصدة افتتاحية مستورد",
+            Status = JournalEntryStatus.Draft
+        };
         foreach (var row in rows)
         {
             var data = JsonToDictionary(row.NormalizedJson!);
@@ -281,7 +328,10 @@ public sealed class OpeningBalancesImportHandler(AppDbContext dbContext) : Impor
     }
 }
 
-public sealed class JournalEntriesImportHandler(AppDbContext dbContext) : ImportHandlerBase(dbContext)
+public sealed class JournalEntriesImportHandler(
+    AppDbContext dbContext,
+    INumberSequenceService numberSequence,
+    ICurrentTenantService currentTenant) : ImportHandlerBase(dbContext)
 {
     public override ImportType SupportedType => ImportType.JournalEntries;
     public override IReadOnlyList<string> TemplateHeaders => ["EntryDate", "EntryNumber", "AccountCode", "CostCenterCode", "Debit", "Credit", "Description", "LineDescription"];
@@ -340,11 +390,23 @@ public sealed class JournalEntriesImportHandler(AppDbContext dbContext) : Import
 
         var period = await DbContext.AccountingPeriods.FirstOrDefaultAsync(x => x.Id == periodId && x.FinancialYearId == yearId && x.Status == AccountingPeriodStatus.Open, cancellationToken)
             ?? throw new InvalidOperationException("Selected accounting period is not open.");
+        var tenantId = currentTenant.TenantId ?? throw new InvalidOperationException("Tenant context is required.");
+        var yearNumber = await DbContext.FinancialYears.Where(x => x.Id == yearId).Select(x => x.StartDate.Year).FirstAsync(cancellationToken);
 
         foreach (var group in rows.GroupBy(r => JsonToDictionary(r.NormalizedJson!)["EntryNumber"]))
         {
             var first = JsonToDictionary(group.First().NormalizedJson!);
-            var entry = new JournalEntry { FinancialYearId = period.FinancialYearId, AccountingPeriodId = period.Id, EntryNumber = group.Key!, EntryDate = DateOnly.Parse(first["EntryDate"]!), Description = first["Description"] ?? $"Imported {group.Key}", Status = JournalEntryStatus.Draft };
+            var journalEntryNo = await numberSequence.NextAsync("JournalEntryNo", tenantId, cancellationToken);
+            var entry = new JournalEntry
+            {
+                JournalEntryNo = journalEntryNo,
+                FinancialYearId = period.FinancialYearId,
+                AccountingPeriodId = period.Id,
+                EntryNumber = $"JE-{yearNumber}-{journalEntryNo:000000}",
+                EntryDate = DateOnly.Parse(first["EntryDate"]!),
+                Description = first["Description"] ?? "قيد مستورد",
+                Status = JournalEntryStatus.Draft
+            };
             foreach (var row in group)
             {
                 var data = JsonToDictionary(row.NormalizedJson!);

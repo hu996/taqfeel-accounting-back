@@ -76,7 +76,7 @@ public sealed class FinancialYearService(
 
         if (year is null)
         {
-            return BaseResponseDto<FinancialYearDto>.Fail("السنة المالية غير موجودة.");
+            return BaseResponseDto<FinancialYearDto>.NotFound("السنة المالية غير موجودة.");
         }
 
         if (year.Status == FinancialYearStatus.Closed)
@@ -137,7 +137,7 @@ public sealed class FinancialYearService(
 
         if (year is null)
         {
-            return BaseResponseDto<FinancialYearDto>.Fail("السنة المالية غير موجودة.");
+            return BaseResponseDto<FinancialYearDto>.NotFound("السنة المالية غير موجودة.");
         }
 
         return BaseResponseDto<FinancialYearDto>.Ok(
@@ -172,7 +172,7 @@ public sealed class FinancialYearService(
 
         if (year is null)
         {
-            return BaseResponseDto<FinancialYearDto>.Fail("السنة المالية غير موجودة.");
+            return BaseResponseDto<FinancialYearDto>.NotFound("السنة المالية غير موجودة.");
         }
 
         var hasOpenedPeriods = await DbContext.AccountingPeriods.AnyAsync(

@@ -66,6 +66,8 @@ public static class DependencyInjection
         services.AddScoped<IAuthService, AuthService>();
         services.AddScoped<ITenantAccessService, TenantAccessService>();
         services.AddScoped<IAuditLogService, AuditLogService>();
+        services.AddScoped<INumberSequenceService, NumberSequenceService>();
+        services.AddScoped<IWorkflowAccessService, WorkflowAccessService>();
         services.AddScoped<IFinancialYearService, FinancialYearService>();
         services.AddScoped<IAccountingPeriodService, AccountingPeriodService>();
         services.AddScoped<IChartOfAccountsService, ChartOfAccountsService>();
