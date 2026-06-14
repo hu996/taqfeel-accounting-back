@@ -12,27 +12,56 @@ public sealed class AppDbContext(
     ICurrentUserService currentUser)
     : IdentityDbContext<ApplicationUser, ApplicationRole, Guid>(options)
 {
-    public DbSet<Tenant> Tenants => Set<Tenant>();
-    public DbSet<Permission> Permissions => Set<Permission>();
-    public DbSet<RolePermission> RolePermissions => Set<RolePermission>();
-    public DbSet<UserTenantAccess> UserTenantAccesses => Set<UserTenantAccess>();
-    public DbSet<ReviewerTenantAssignment> ReviewerTenantAssignments => Set<ReviewerTenantAssignment>();
-    public DbSet<NumberSequence> NumberSequences => Set<NumberSequence>();
-    public DbSet<RefreshToken> RefreshTokens => Set<RefreshToken>();
-    public DbSet<AuditLog> AuditLogs => Set<AuditLog>();
-    public DbSet<FinancialYear> FinancialYears => Set<FinancialYear>();
-    public DbSet<AccountingPeriod> AccountingPeriods => Set<AccountingPeriod>();
-    public DbSet<Account> Accounts => Set<Account>();
-    public DbSet<CostCenter> CostCenters => Set<CostCenter>();
-    public DbSet<JournalEntry> JournalEntries => Set<JournalEntry>();
-    public DbSet<JournalEntryLine> JournalEntryLines => Set<JournalEntryLine>();
-    public DbSet<Document> Documents => Set<Document>();
-    public DbSet<ClosingChecklistTemplate> ClosingChecklistTemplates => Set<ClosingChecklistTemplate>();
-    public DbSet<ClosingChecklistTemplateItem> ClosingChecklistTemplateItems => Set<ClosingChecklistTemplateItem>();
-    public DbSet<ClosingTask> ClosingTasks => Set<ClosingTask>();
-    public DbSet<ClosingSubmission> ClosingSubmissions => Set<ClosingSubmission>();
-    public DbSet<ImportBatch> ImportBatches => Set<ImportBatch>();
-    public DbSet<ImportBatchRow> ImportBatchRows => Set<ImportBatchRow>();
+    public DbSet<Tenant> Tenants { get { return Set<Tenant>(); } }
+    public DbSet<Permission> Permissions { get { return Set<Permission>(); } }
+    public DbSet<RolePermission> RolePermissions { get { return Set<RolePermission>(); } }
+    public DbSet<UserTenantAccess> UserTenantAccesses { get { return Set<UserTenantAccess>(); } }
+    public DbSet<ReviewerTenantAssignment> ReviewerTenantAssignments { get { return Set<ReviewerTenantAssignment>(); } }
+    public DbSet<NumberSequence> NumberSequences { get { return Set<NumberSequence>(); } }
+    public DbSet<RefreshToken> RefreshTokens { get { return Set<RefreshToken>(); } }
+    public DbSet<AuditLog> AuditLogs { get { return Set<AuditLog>(); } }
+    public DbSet<PasswordHistory> PasswordHistories { get { return Set<PasswordHistory>(); } }
+    public DbSet<FinancialYear> FinancialYears { get { return Set<FinancialYear>(); } }
+    public DbSet<AccountingPeriod> AccountingPeriods { get { return Set<AccountingPeriod>(); } }
+    public DbSet<Account> Accounts { get { return Set<Account>(); } }
+    public DbSet<CostCenter> CostCenters { get { return Set<CostCenter>(); } }
+    public DbSet<JournalEntry> JournalEntries { get { return Set<JournalEntry>(); } }
+    public DbSet<JournalEntryLine> JournalEntryLines { get { return Set<JournalEntryLine>(); } }
+    public DbSet<Document> Documents { get { return Set<Document>(); } }
+    public DbSet<ClosingChecklistTemplate> ClosingChecklistTemplates { get { return Set<ClosingChecklistTemplate>(); } }
+    public DbSet<ClosingChecklistTemplateItem> ClosingChecklistTemplateItems { get { return Set<ClosingChecklistTemplateItem>(); } }
+    public DbSet<ClosingTask> ClosingTasks { get { return Set<ClosingTask>(); } }
+    public DbSet<ClosingSubmission> ClosingSubmissions { get { return Set<ClosingSubmission>(); } }
+    public DbSet<ImportBatch> ImportBatches { get { return Set<ImportBatch>(); } }
+    public DbSet<ImportBatchRow> ImportBatchRows { get { return Set<ImportBatchRow>(); } }
+    public DbSet<WorkflowDefinition> WorkflowDefinitions { get { return Set<WorkflowDefinition>(); } }
+    public DbSet<TenantModule> TenantModules { get { return Set<TenantModule>(); } }
+    public DbSet<WorkflowStep> WorkflowSteps { get { return Set<WorkflowStep>(); } }
+    public DbSet<WorkflowAction> WorkflowActions { get { return Set<WorkflowAction>(); } }
+    public DbSet<Notification> Notifications { get { return Set<Notification>(); } }
+    public DbSet<ActivityLog> ActivityLogs { get { return Set<ActivityLog>(); } }
+    public DbSet<JournalEntryVersion> JournalEntryVersions { get { return Set<JournalEntryVersion>(); } }
+    public DbSet<EntityComment> EntityComments { get { return Set<EntityComment>(); } }
+    public DbSet<CustomFieldDefinition> CustomFieldDefinitions { get { return Set<CustomFieldDefinition>(); } }
+    public DbSet<CustomFieldValue> CustomFieldValues { get { return Set<CustomFieldValue>(); } }
+    public DbSet<DocumentNumberTemplate> DocumentNumberTemplates { get { return Set<DocumentNumberTemplate>(); } }
+    public DbSet<OpeningBalanceBatch> OpeningBalanceBatches { get { return Set<OpeningBalanceBatch>(); } }
+    public DbSet<OpeningBalanceLine> OpeningBalanceLines { get { return Set<OpeningBalanceLine>(); } }
+    public DbSet<BankAccount> BankAccounts { get { return Set<BankAccount>(); } }
+    public DbSet<BankStatement> BankStatements { get { return Set<BankStatement>(); } }
+    public DbSet<BankReconciliation> BankReconciliations { get { return Set<BankReconciliation>(); } }
+    public DbSet<BankReconciliationMatch> BankReconciliationMatches { get { return Set<BankReconciliationMatch>(); } }
+    public DbSet<FixedAsset> FixedAssets { get { return Set<FixedAsset>(); } }
+    public DbSet<AssetDepreciationRun> AssetDepreciationRuns { get { return Set<AssetDepreciationRun>(); } }
+    public DbSet<AssetDepreciationLine> AssetDepreciationLines { get { return Set<AssetDepreciationLine>(); } }
+    public DbSet<RecurringJournalEntry> RecurringJournalEntries { get { return Set<RecurringJournalEntry>(); } }
+    public DbSet<RecurringJournalEntryLine> RecurringJournalEntryLines { get { return Set<RecurringJournalEntryLine>(); } }
+    public DbSet<GeneratedRecurringEntry> GeneratedRecurringEntries { get { return Set<GeneratedRecurringEntry>(); } }
+    public DbSet<ClosingCheck> ClosingChecks { get { return Set<ClosingCheck>(); } }
+    public DbSet<ReportDefinition> ReportDefinitions { get { return Set<ReportDefinition>(); } }
+    public DbSet<Customer> Customers { get { return Set<Customer>(); } }
+    public DbSet<Vendor> Vendors { get { return Set<Vendor>(); } }
+    public DbSet<Employee> Employees { get { return Set<Employee>(); } }
 
     public bool DisableTenantFilter { get; set; }
 
@@ -59,6 +88,14 @@ public sealed class AppDbContext(
 
         foreach (var entry in ChangeTracker.Entries<BaseEntity>())
         {
+            if (entry.State == EntityState.Deleted)
+            {
+                entry.State = EntityState.Modified;
+                entry.Entity.IsDeleted = true;
+                entry.Entity.DeletedAt = now;
+                entry.Entity.DeletedByUserId = currentUser.UserId;
+            }
+
             if (entry.State == EntityState.Added)
             {
                 entry.Entity.Id = entry.Entity.Id == Guid.Empty ? Guid.NewGuid() : entry.Entity.Id;
@@ -76,16 +113,49 @@ public sealed class AppDbContext(
 
         foreach (var entry in ChangeTracker.Entries<ITenantEntity>())
         {
-            var selectedTenantId = currentTenant.TenantId ?? TenantDefaults.DefaultTenantId;
+            var selectedTenantId = currentTenant.TenantId;
+
+            //var entityName = entry.Entity.GetType().Name;
+            //var state = entry.State.ToString();
+            //var entityTenantId = entry.Entity.TenantId;
+
+            ////var selectedTenantId = currentTenant.TenantId;
+
+            //if (!selectedTenantId.HasValue)
+            //{
+            //    throw new UnauthorizedAccessException(
+            //        $"A tenant session is required. Entity={entityName}, State={state}, EntityTenantId={entityTenantId}");
+            //}
+
+
+            if (!selectedTenantId.HasValue)
+            {
+    //            var tenantEntries = ChangeTracker.Entries<ITenantEntity>()
+    //.Where(x => x.State == EntityState.Added || x.State == EntityState.Modified || x.State == EntityState.Deleted)
+    //.Select(x => new
+    //{
+    //    EntityName = x.Entity.GetType().Name,
+    //    State = x.State.ToString(),
+    //    TenantId = x.Entity.TenantId
+    //})
+    //.ToList();
+
+    //            var details = string.Join(", ", tenantEntries.Select(x =>
+    //                $"{x.EntityName} - {x.State} - {x.TenantId}"));
+
+    //            throw new UnauthorizedAccessException(
+    //                $"A tenant session is required for tenant-owned changes. Entries: {details}");
+    //            throw new UnauthorizedAccessException("A tenant session is required for tenant-owned changes.");
+            }
 
             if (entry.State == EntityState.Added)
             {
-                if (entry.Entity.TenantId != Guid.Empty && entry.Entity.TenantId != selectedTenantId)
+                if (entry.Entity.TenantId != Guid.Empty && entry.Entity.TenantId != selectedTenantId.Value)
                 {
                     throw new InvalidOperationException("TenantId cannot be supplied or overridden for tenant-owned entities.");
                 }
 
-                entry.Entity.TenantId = selectedTenantId;
+                entry.Entity.TenantId = selectedTenantId.Value;
             }
 
             if (entry.State == EntityState.Modified)
@@ -102,7 +172,7 @@ public sealed class AppDbContext(
 
             if (entry.Entity.TenantId == Guid.Empty)
             {
-                entry.Entity.TenantId = selectedTenantId;
+                entry.Entity.TenantId = selectedTenantId.Value;
             }
         }
     }
@@ -164,5 +234,11 @@ public sealed class AppDbContext(
         }
     }
 
-    public Guid? CurrentTenantId => currentTenant.TenantId ?? TenantDefaults.DefaultTenantId;
+    public Guid? CurrentTenantId
+    {
+        get
+        {
+            return currentTenant.TenantId;
+        }
+    }
 }

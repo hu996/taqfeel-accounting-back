@@ -18,7 +18,6 @@ public sealed class AuditLogService(AppDbContext dbContext) : IAuditLogService
             EntityId = entityId,
             OldValues = oldValues,
             NewValues = newValues,
-            IpAddress = ipAddress,
             UserAgent = userAgent,
             CreatedAt = DateTimeOffset.UtcNow
         });

@@ -51,16 +51,19 @@ builder.Services.AddInfrastructure(builder.Configuration);
 builder.Services.AddValidatorsFromAssemblyContaining<LoginRequestValidator>();
 
 builder.Services.AddScoped<ValidationFilter>();
+builder.Services.AddScoped<ModuleAccessFilter>();
 
 builder.Services.AddControllers(options =>
 {
     options.Filters.Add<ValidationFilter>();
+    options.Filters.Add<ModuleAccessFilter>();
 });
 
 builder.Services.AddEndpointsApiExplorer();
 
 builder.Services.AddSingleton<IAuthorizationPolicyProvider, PermissionPolicyProvider>();
 builder.Services.AddScoped<IAuthorizationHandler, PermissionAuthorizationHandler>();
+builder.Services.AddScoped<IAuthorizationHandler, ModuleAuthorizationHandler>();
 
 builder.Services.AddAuthorization();
 
@@ -198,6 +201,16 @@ if (app.Configuration.GetValue("Database:InitializeOnStartup", true))
         currentTenant,
         app.Configuration,
         app.Environment);
+
+    await SeedData.SeedTenantSessionDefaultsAsync(
+        dbContext,
+        roleManager,
+        currentTenant);
+
+    await SeedData.AssignSuperAdminSessionAsync(
+        dbContext,
+        userManager,
+        app.Configuration);
 }
 
 app.Run();

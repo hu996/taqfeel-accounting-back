@@ -23,6 +23,15 @@ public static class Permissions
         "ClosingSubmissions.View", "ClosingSubmissions.Submit", "ClosingSubmissions.Review", "ClosingSubmissions.Approve", "ClosingSubmissions.Reject", "ClosingSubmissions.ClosePeriod", "ClosingSubmissions.ReopenPeriod",
         "AccountingReports.TrialBalance", "AccountingReports.GeneralLedger", "AccountingReports.AccountStatement", "AccountingReports.ClosingProgress",
         "Imports.View", "Imports.Upload", "Imports.Validate", "Imports.Confirm", "Imports.Cancel", "Imports.DownloadTemplate",
-        "Imports.Submit", "Imports.Review", "Imports.Approve", "Imports.Reject"
+        "Imports.Submit", "Imports.Review", "Imports.Approve", "Imports.Reject",
+        "Notifications.View", "Activities.View", "Workflows.View", "Workflows.Manage",
+        "Comments.View", "Comments.Create", "Comments.Delete", "Search.Use",
+        "CustomFields.View", "CustomFields.Manage", "CustomFields.EditValues",
+        "DocumentTemplates.Manage", "OpeningBalances.Create", "OpeningBalances.Submit", "OpeningBalances.Approve",
+        "BankReconciliation.View", "BankReconciliation.Manage", "BankReconciliation.Match",
+        "FixedAssets.Manage", "FixedAssets.RunDepreciation", "FixedAssets.Approve",
+        "RecurringEntries.Manage", "RecurringEntries.Generate", "ClosingAssistant.Run",
+        "Dashboard.View", "ReportBuilder.View", "ReportBuilder.Manage", "ReportBuilder.Run",
+        "BusinessParties.Manage"
     ];
 }

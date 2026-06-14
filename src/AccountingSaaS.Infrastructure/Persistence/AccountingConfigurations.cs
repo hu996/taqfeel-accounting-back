@@ -9,7 +9,9 @@ public sealed class FinancialYearConfiguration : IEntityTypeConfiguration<Financ
     public void Configure(EntityTypeBuilder<FinancialYear> builder)
     {
         builder.Property(x => x.YearName).HasMaxLength(80).IsRequired();
-        builder.HasIndex(x => new { x.TenantId, x.YearName }).IsUnique();
+        builder.Property(x => x.YearCode).HasMaxLength(50).IsRequired();
+        builder.HasIndex(x => new { x.TenantId, x.YearName }).IsUnique().HasFilter("[IsDeleted] = 0");
+        builder.HasIndex(x => new { x.TenantId, x.YearCode }).IsUnique().HasFilter("[IsDeleted] = 0");
         builder.HasIndex(x => x.TenantId);
     }
 }
@@ -19,6 +21,8 @@ public sealed class AccountingPeriodConfiguration : IEntityTypeConfiguration<Acc
     public void Configure(EntityTypeBuilder<AccountingPeriod> builder)
     {
         builder.Property(x => x.PeriodName).HasMaxLength(80).IsRequired();
+        builder.Property(x => x.PeriodCode).HasMaxLength(50).IsRequired();
+        builder.HasIndex(x => new { x.TenantId, x.PeriodCode }).IsUnique().HasFilter("[IsDeleted] = 0");
         builder.HasIndex(x => new { x.TenantId, x.FinancialYearId });
         builder.HasIndex(x => new { x.TenantId, x.Status });
     }
@@ -29,10 +33,10 @@ public sealed class AccountConfiguration : IEntityTypeConfiguration<Account>
     public void Configure(EntityTypeBuilder<Account> builder)
     {
         builder.Property(x => x.Code).HasMaxLength(50).IsRequired();
-        builder.HasIndex(x => new { x.TenantId, x.AccountNo }).IsUnique();
+        builder.HasIndex(x => new { x.TenantId, x.AccountNo }).IsUnique().HasFilter("[IsDeleted] = 0");
         builder.Property(x => x.NameAr).HasMaxLength(200);
         builder.Property(x => x.NameEn).HasMaxLength(200).IsRequired();
-        builder.HasIndex(x => new { x.TenantId, x.Code }).IsUnique();
+        builder.HasIndex(x => new { x.TenantId, x.Code }).IsUnique().HasFilter("[IsDeleted] = 0");
         builder.HasOne(x => x.ParentAccount).WithMany().HasForeignKey(x => x.ParentAccountId).OnDelete(DeleteBehavior.Restrict);
     }
 }
@@ -42,9 +46,9 @@ public sealed class CostCenterConfiguration : IEntityTypeConfiguration<CostCente
     public void Configure(EntityTypeBuilder<CostCenter> builder)
     {
         builder.Property(x => x.Code).HasMaxLength(50).IsRequired();
-        builder.HasIndex(x => new { x.TenantId, x.CostCenterNo }).IsUnique();
+        builder.HasIndex(x => new { x.TenantId, x.CostCenterNo }).IsUnique().HasFilter("[IsDeleted] = 0");
         builder.Property(x => x.Name).HasMaxLength(200).IsRequired();
-        builder.HasIndex(x => new { x.TenantId, x.Code }).IsUnique();
+        builder.HasIndex(x => new { x.TenantId, x.Code }).IsUnique().HasFilter("[IsDeleted] = 0");
     }
 }
 
@@ -54,7 +58,7 @@ public sealed class JournalEntryConfiguration : IEntityTypeConfiguration<Journal
     {
         builder.Property(x => x.EntryNumber).HasMaxLength(60).IsRequired();
         builder.Property(x => x.ReviewReason).HasMaxLength(500);
-        builder.HasIndex(x => new { x.TenantId, x.JournalEntryNo }).IsUnique();
+        builder.HasIndex(x => new { x.TenantId, x.JournalEntryNo }).IsUnique().HasFilter("[IsDeleted] = 0");
         builder.HasIndex(x => new { x.TenantId, x.WorkflowStatus, x.AssignedReviewerUserId });
         builder.Property(x => x.Description).HasMaxLength(500).IsRequired();
         builder.Property(x => x.TotalDebit).HasColumnType("decimal(18,2)");
@@ -62,7 +66,7 @@ public sealed class JournalEntryConfiguration : IEntityTypeConfiguration<Journal
         builder.HasIndex(x => new { x.TenantId, x.FinancialYearId });
         builder.HasIndex(x => new { x.TenantId, x.AccountingPeriodId });
         builder.HasIndex(x => new { x.TenantId, x.EntryDate });
-        builder.HasIndex(x => new { x.TenantId, x.FinancialYearId, x.EntryNumber }).IsUnique();
+        builder.HasIndex(x => new { x.TenantId, x.FinancialYearId, x.EntryNumber }).IsUnique().HasFilter("[IsDeleted] = 0");
         builder.HasOne(x => x.FinancialYear).WithMany().HasForeignKey(x => x.FinancialYearId).OnDelete(DeleteBehavior.NoAction);
         builder.HasOne(x => x.AccountingPeriod).WithMany().HasForeignKey(x => x.AccountingPeriodId).OnDelete(DeleteBehavior.NoAction);
         builder.HasMany(x => x.Lines).WithOne(x => x.JournalEntry).HasForeignKey(x => x.JournalEntryId).OnDelete(DeleteBehavior.Cascade);
@@ -88,7 +92,7 @@ public sealed class DocumentConfiguration : IEntityTypeConfiguration<Document>
     public void Configure(EntityTypeBuilder<Document> builder)
     {
         builder.Property(x => x.OriginalFileName).HasMaxLength(255).IsRequired();
-        builder.HasIndex(x => new { x.TenantId, x.DocumentNo }).IsUnique();
+        builder.HasIndex(x => new { x.TenantId, x.DocumentNo }).IsUnique().HasFilter("[IsDeleted] = 0");
         builder.HasIndex(x => new { x.TenantId, x.WorkflowStatus, x.AssignedReviewerUserId });
         builder.Property(x => x.StoredFileName).HasMaxLength(255).IsRequired();
         builder.Property(x => x.FilePath).HasMaxLength(500).IsRequired();
@@ -141,7 +145,7 @@ public sealed class ClosingSubmissionConfiguration : IEntityTypeConfiguration<Cl
         builder.Property(x => x.RejectionReason).HasMaxLength(500);
         builder.Property(x => x.ReopenReason).HasMaxLength(500);
         builder.HasIndex(x => new { x.TenantId, x.Status, x.AssignedReviewerUserId });
-        builder.HasIndex(x => new { x.TenantId, x.AccountingPeriodId }).IsUnique();
+        builder.HasIndex(x => new { x.TenantId, x.AccountingPeriodId }).IsUnique().HasFilter("[IsDeleted] = 0");
         builder.HasIndex(x => new { x.TenantId, x.FinancialYearId });
     }
 }

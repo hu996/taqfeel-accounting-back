@@ -34,7 +34,7 @@ public sealed record JournalEntryDto(Guid Id, Guid FinancialYearId, Guid Account
     public WorkflowStatus WorkflowStatus { get; init; }
     public Guid? AssignedReviewerUserId { get; init; }
 }
-public sealed record CreateJournalEntryRequest(Guid FinancialYearId, Guid AccountingPeriodId, DateOnly EntryDate, string Description, IReadOnlyList<JournalEntryLineRequest> Lines);
+public sealed record CreateJournalEntryRequest(DateOnly EntryDate, string Description, IReadOnlyList<JournalEntryLineRequest> Lines);
 public sealed record UpdateJournalEntryRequest(DateOnly EntryDate, string Description, IReadOnlyList<JournalEntryLineRequest> Lines);
 public sealed record PostJournalEntryRequest(string? Notes);
 public sealed record ReverseJournalEntryRequest(string Reason);

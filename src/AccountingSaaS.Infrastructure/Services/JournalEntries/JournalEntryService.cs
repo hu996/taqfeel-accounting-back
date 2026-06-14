@@ -6,6 +6,7 @@ using AccountingSaaS.Infrastructure.Mapping;
 using AccountingSaaS.Infrastructure.Persistence;
 using AccountingSaaS.Shared.Responses;
 using Microsoft.EntityFrameworkCore;
+using System.Text.Json;
 
 namespace AccountingSaaS.Infrastructure.Services;
 
@@ -15,7 +16,12 @@ public sealed class JournalEntryService(
     ICurrentUserService currentUser,
     IAuditLogService auditLog,
     INumberSequenceService numberSequence,
-    IWorkflowAccessService workflowAccess)
+    IWorkflowAccessService workflowAccess,
+    IDynamicWorkflowService dynamicWorkflow,
+    INotificationService notifications,
+    IActivityService activities,
+    ICommentService comments,
+    ICurrentSessionService currentSession)
     : AccountingServiceBase(dbContext, currentTenant), IJournalEntryService
 {
     public async Task<BaseResponseDto<JournalEntryDto>> CreateDraftAsync(
@@ -24,9 +30,17 @@ public sealed class JournalEntryService(
     {
         _ = TenantId;
 
+        if (!currentSession.ActiveAccountingPeriodId.HasValue)
+        {
+            return BaseResponseDto<JournalEntryDto>.Fail(
+                "No active accounting period is available for this session.");
+        }
+
+        var financialYearId = currentSession.ActiveFinancialYearId;
+        var accountingPeriodId = currentSession.ActiveAccountingPeriodId.Value;
         var validation = await ValidateJournalAsync(
-            request.FinancialYearId,
-            request.AccountingPeriodId,
+            financialYearId,
+            accountingPeriodId,
             request.EntryDate,
             request.Lines,
             cancellationToken);
@@ -41,15 +55,15 @@ public sealed class JournalEntryService(
             TenantId,
             cancellationToken);
         var financialYear = await DbContext.FinancialYears
-            .Where(x => x.Id == request.FinancialYearId)
+            .Where(x => x.Id == financialYearId)
             .Select(x => x.StartDate.Year)
             .FirstAsync(cancellationToken);
 
         var entry = new JournalEntry
         {
             JournalEntryNo = journalEntryNo,
-            FinancialYearId = request.FinancialYearId,
-            AccountingPeriodId = request.AccountingPeriodId,
+            FinancialYearId = financialYearId,
+            AccountingPeriodId = accountingPeriodId,
             EntryDate = request.EntryDate,
             Description = request.Description,
             EntryNumber = $"JE-{financialYear}-{journalEntryNo:000000}",
@@ -81,6 +95,10 @@ public sealed class JournalEntryService(
             entry.Id.ToString(),
             newValues: entry.EntryNumber,
             cancellationToken: cancellationToken);
+        await activities.CreateAsync(new(
+            "Created", nameof(JournalEntry), entry.Id,
+            "إنشاء قيد يومية", "Journal entry created",
+            entry.EntryNumber, entry.EntryNumber), cancellationToken);
 
         var dto = await LoadDtoAsync(entry.Id, cancellationToken);
 
@@ -124,6 +142,32 @@ public sealed class JournalEntryService(
             return BaseResponseDto<JournalEntryDto>.Fail(validation.Message, validation.Errors);
         }
 
+        if (entry.WorkflowStatus is WorkflowStatus.Rejected or WorkflowStatus.ReturnedForCorrection)
+        {
+            var versionNo = await DbContext.JournalEntryVersions
+                .Where(x => x.JournalEntryId == id)
+                .Select(x => (int?)x.VersionNo)
+                .MaxAsync(cancellationToken) ?? 0;
+            DbContext.JournalEntryVersions.Add(new JournalEntryVersion
+            {
+                JournalEntryId = id,
+                VersionNo = versionNo + 1,
+                SnapshotJson = JsonSerializer.Serialize(new
+                {
+                    Header = new
+                    {
+                        entry.EntryNumber, entry.EntryDate, entry.Description,
+                        entry.TotalDebit, entry.TotalCredit, entry.Status, entry.WorkflowStatus
+                    },
+                    Lines = entry.Lines.Select(x => new
+                    {
+                        x.AccountId, x.CostCenterId, x.Debit, x.Credit, x.Description
+                    })
+                }),
+                ChangeReason = entry.ReviewReason
+            });
+        }
+
         entry.EntryDate = request.EntryDate;
         entry.Description = request.Description;
         entry.TotalDebit = request.Lines.Sum(x => x.Debit);
@@ -151,6 +195,18 @@ public sealed class JournalEntryService(
             nameof(JournalEntry),
             id.ToString(),
             cancellationToken: cancellationToken);
+        await activities.CreateAsync(new(
+            "Posted", nameof(JournalEntry), entry.Id,
+            "ترحيل قيد يومية", "Journal entry posted",
+            entry.EntryNumber, entry.EntryNumber), cancellationToken);
+        if (entry.CreatedByUserId.HasValue)
+        {
+            await notifications.CreateAsync(new(
+                entry.CreatedByUserId.Value,
+                "تم ترحيل القيد", "Journal entry posted",
+                entry.EntryNumber, entry.EntryNumber,
+                nameof(JournalEntry), entry.Id), cancellationToken);
+        }
 
         var dto = await LoadDtoAsync(id, cancellationToken);
 
@@ -397,7 +453,15 @@ public sealed class JournalEntryService(
             }
         }
 
+        var firstStep = await dynamicWorkflow.GetFirstStepAsync(nameof(JournalEntry), cancellationToken);
+        if (firstStep is null)
+        {
+            return BaseResponseDto<JournalEntryDto>.Fail("No active workflow is configured for journal entries.");
+        }
+
         entry.WorkflowStatus = WorkflowStatus.Submitted;
+        entry.WorkflowDefinitionId = firstStep.WorkflowDefinitionId;
+        entry.WorkflowStepId = firstStep.Id;
         entry.AssignedReviewerUserId = request.ReviewerUserId;
         entry.ReviewReason = null;
         await DbContext.SaveChangesAsync(cancellationToken);
@@ -409,6 +473,17 @@ public sealed class JournalEntryService(
             nameof(JournalEntry),
             entry.Id.ToString(),
             cancellationToken: cancellationToken);
+        await dynamicWorkflow.RecordActionAsync(
+            nameof(JournalEntry), entry.Id, firstStep.WorkflowDefinitionId, firstStep.Id,
+            WorkflowStatus.Draft.ToString(), WorkflowStatus.Submitted.ToString(),
+            WorkflowActionType.Submit, null, null, cancellationToken);
+        await notifications.CreateForRoleAsync(
+            "Reviewer", "قيد جديد للمراجعة", "Journal entry awaiting review",
+            entry.EntryNumber, entry.EntryNumber, nameof(JournalEntry), entry.Id, cancellationToken);
+        await activities.CreateAsync(new(
+            "Submitted", nameof(JournalEntry), entry.Id,
+            "إرسال قيد للمراجعة", "Journal entry submitted",
+            entry.EntryNumber, entry.EntryNumber), cancellationToken);
 
         return BaseResponseDto<JournalEntryDto>.Ok(
             (await LoadDtoAsync(id, cancellationToken))!,
@@ -497,6 +572,30 @@ public sealed class JournalEntryService(
         return BaseResponseDto<PaginatedResult<JournalEntryDto>>.Ok(result);
     }
 
+    public async Task<BaseResponseDto<IReadOnlyList<JournalEntryVersionDto>>> GetVersionsAsync(
+        Guid id,
+        CancellationToken cancellationToken)
+    {
+        if (!await DbContext.JournalEntries.AnyAsync(x => x.Id == id, cancellationToken))
+        {
+            return BaseResponseDto<IReadOnlyList<JournalEntryVersionDto>>.NotFound("Journal entry was not found.");
+        }
+
+        var versions = await DbContext.JournalEntryVersions
+            .Where(x => x.JournalEntryId == id)
+            .OrderByDescending(x => x.VersionNo)
+            .Select(x => new JournalEntryVersionDto(
+                x.Id,
+                x.VersionNo,
+                x.SnapshotJson,
+                x.CreatedByUserId,
+                x.CreatedAt,
+                x.ChangeReason))
+            .ToListAsync(cancellationToken);
+
+        return BaseResponseDto<IReadOnlyList<JournalEntryVersionDto>>.Ok(versions);
+    }
+
     private async Task<BaseResponseDto<JournalEntryDto>> ChangeReviewStatusAsync(
         Guid id,
         WorkflowStatus requiredStatus,
@@ -529,13 +628,42 @@ public sealed class JournalEntryService(
             return BaseResponseDto<JournalEntryDto>.Fail("لا يمكن تنفيذ الإجراء من حالة القيد الحالية.");
         }
 
+        WorkflowStep? workflowStep = null;
+        if (entry.WorkflowStepId.HasValue)
+        {
+            workflowStep = await DbContext.WorkflowSteps.FirstOrDefaultAsync(x => x.Id == entry.WorkflowStepId, cancellationToken);
+        }
+        var workflowAction = targetStatus switch
+        {
+            WorkflowStatus.Approved => WorkflowActionType.Approve,
+            WorkflowStatus.Rejected => WorkflowActionType.Reject,
+            WorkflowStatus.ReturnedForCorrection => WorkflowActionType.Return,
+            _ => WorkflowActionType.Submit
+        };
+        if (workflowStep is not null && targetStatus != WorkflowStatus.UnderReview &&
+            !await dynamicWorkflow.CanActAsync(workflowStep, workflowAction, cancellationToken))
+        {
+            return BaseResponseDto<JournalEntryDto>.Fail("The current workflow step does not allow this action for the current user.");
+        }
+
         if (targetStatus is WorkflowStatus.Rejected or WorkflowStatus.ReturnedForCorrection &&
             string.IsNullOrWhiteSpace(reason))
         {
             return BaseResponseDto<JournalEntryDto>.Fail("يجب إدخال سبب واضح.");
         }
 
-        entry.WorkflowStatus = targetStatus;
+        var effectiveTarget = targetStatus;
+        if (targetStatus == WorkflowStatus.Approved && workflowStep is not null && !workflowStep.IsFinalApproval)
+        {
+            var nextStep = await dynamicWorkflow.GetNextStepAsync(workflowStep.WorkflowDefinitionId, workflowStep.StepOrder, cancellationToken);
+            if (nextStep is null)
+            {
+                return BaseResponseDto<JournalEntryDto>.Fail("Workflow is missing the next approval step.");
+            }
+            entry.WorkflowStepId = nextStep.Id;
+            effectiveTarget = WorkflowStatus.UnderReview;
+        }
+        entry.WorkflowStatus = effectiveTarget;
         entry.AssignedReviewerUserId ??= currentUser.UserId;
         entry.ReviewReason = string.IsNullOrWhiteSpace(reason) ? null : reason.Trim();
         await DbContext.SaveChangesAsync(cancellationToken);
@@ -548,6 +676,32 @@ public sealed class JournalEntryService(
             entry.Id.ToString(),
             newValues: entry.ReviewReason,
             cancellationToken: cancellationToken);
+        if (workflowStep is not null && entry.WorkflowDefinitionId.HasValue)
+        {
+            await dynamicWorkflow.RecordActionAsync(
+                nameof(JournalEntry), entry.Id, entry.WorkflowDefinitionId.Value, workflowStep.Id,
+                requiredStatus.ToString(), effectiveTarget.ToString(), workflowAction,
+                entry.ReviewReason, null, cancellationToken);
+        }
+        if (targetStatus is WorkflowStatus.Rejected or WorkflowStatus.ReturnedForCorrection && reason is not null)
+        {
+            await comments.AddAsync(new(nameof(JournalEntry), entry.Id, reason, true), cancellationToken);
+        }
+        if (entry.CreatedByUserId.HasValue && targetStatus != WorkflowStatus.UnderReview)
+        {
+            await notifications.CreateAsync(new(
+                entry.CreatedByUserId.Value,
+                targetStatus == WorkflowStatus.Approved ? "تم اعتماد القيد" : "تمت إعادة القيد",
+                targetStatus == WorkflowStatus.Approved ? "Journal entry approved" : "Journal entry returned",
+                entry.ReviewReason ?? entry.EntryNumber,
+                entry.ReviewReason ?? entry.EntryNumber,
+                nameof(JournalEntry), entry.Id), cancellationToken);
+        }
+        await activities.CreateAsync(new(
+            action, nameof(JournalEntry), entry.Id,
+            "تحديث دورة اعتماد القيد", "Journal workflow updated",
+            entry.ReviewReason ?? entry.EntryNumber,
+            entry.ReviewReason ?? entry.EntryNumber), cancellationToken);
 
         var message = targetStatus switch
         {

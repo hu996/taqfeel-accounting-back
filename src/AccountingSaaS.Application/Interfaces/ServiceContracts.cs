@@ -6,10 +6,31 @@ namespace AccountingSaaS.Application.Interfaces;
 
 public interface IAuthService
 {
-    Task<BaseResponseDto<AuthResponse>> LoginAsync(LoginRequest request, string? ipAddress, string? userAgent, CancellationToken cancellationToken);
-    Task<BaseResponseDto<AuthResponse>> RefreshTokenAsync(RefreshTokenRequest request, string? ipAddress, string? userAgent, CancellationToken cancellationToken);
+    Task<BaseResponseDto<LoginResponseDto>> LoginAsync(LoginRequest request, string? ipAddress, string? userAgent, CancellationToken cancellationToken);
+    Task<BaseResponseDto<LoginResponseDto>> RefreshTokenAsync(RefreshTokenRequest request, string? ipAddress, string? userAgent, CancellationToken cancellationToken);
     Task<BaseResponseDto<object>> LogoutAsync(LogoutRequest request, string? ipAddress, string? userAgent, CancellationToken cancellationToken);
-    Task<BaseResponseDto<CurrentUserDto>> MeAsync(CancellationToken cancellationToken);
+    Task<BaseResponseDto<object>> ChangePasswordAsync(ChangePasswordRequest request, CancellationToken cancellationToken);
+}
+
+public interface ISessionService
+{
+    Task<BaseResponseDto<SessionContextDto>> GetContextAsync(CancellationToken cancellationToken);
+    Task<BaseResponseDto<LoginResponseDto>> SwitchActiveFinancialYearAsync(
+        SwitchActiveFinancialYearRequest request,
+        CancellationToken cancellationToken);
+}
+
+public interface IJwtTokenService
+{
+    string CreateAccessToken(LoginResponseDto context);
+}
+
+public interface ISessionContextFactory
+{
+    Task<LoginResponseDto> CreateAsync(
+        Guid userId,
+        Guid? financialYearId,
+        CancellationToken cancellationToken);
 }
 
 public interface ITenantAccessService

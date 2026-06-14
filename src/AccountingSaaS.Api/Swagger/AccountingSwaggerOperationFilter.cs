@@ -10,7 +10,6 @@ namespace AccountingSaaS.Api.Swagger;
 
 public sealed class AccountingSwaggerOperationFilter : IOperationFilter
 {
-    private const string TenantHeaderName = "X-Tenant-Id";
 
     public void Apply(OpenApiOperation operation, OperationFilterContext context)
     {
@@ -62,7 +61,7 @@ public sealed class AccountingSwaggerOperationFilter : IOperationFilter
 
     private static bool IsTenantScoped(string controller, string action)
     {
-        if (controller is "Auth" or "Tenants" or "TenantSwitch")
+        if (controller == "Auth")
         {
             return false;
         }
@@ -75,16 +74,21 @@ public sealed class AccountingSwaggerOperationFilter : IOperationFilter
         return true;
     }
 
-    private static bool IsFileEndpoint(string controller, string action) =>
-        controller == "Documents" && action == "Download"
-        || controller == "Import" && action == "Template";
-
-    private static Type ResolveResponseDataType(string controller, string action) => (controller, action) switch
+    private static bool IsFileEndpoint(string controller, string action)
     {
-        ("Auth", "Login") => typeof(AuthResponse),
-        ("Auth", "RefreshToken") => typeof(AuthResponse),
+        return controller == "Documents" && action == "Download"
+               || controller == "Import" && action == "Template";
+    }
+
+    private static Type ResolveResponseDataType(string controller, string action)
+    {
+        return (controller, action) switch
+        {
+        ("Auth", "Login") => typeof(LoginResponseDto),
+        ("Auth", "RefreshToken") => typeof(LoginResponseDto),
         ("Auth", "Logout") => typeof(object),
-        ("Auth", "Me") => typeof(CurrentUserDto),
+        ("Session", "GetContext") => typeof(SessionContextDto),
+        ("Session", "SwitchActiveFinancialYear") => typeof(LoginResponseDto),
 
         ("Tenants", "Get") => typeof(IReadOnlyList<TenantDto>),
         ("Tenants", "GetById") => typeof(TenantDto),
@@ -92,9 +96,6 @@ public sealed class AccountingSwaggerOperationFilter : IOperationFilter
         ("Tenants", "Update") => typeof(TenantDto),
         ("Tenants", "Activate") => typeof(TenantDto),
         ("Tenants", "Deactivate") => typeof(TenantDto),
-
-        ("TenantSwitch", "MyTenants") => typeof(IReadOnlyList<TenantDto>),
-        ("TenantSwitch", "Validate") => typeof(TenantDto),
 
         ("Users", "Get") => typeof(IReadOnlyList<UserDto>),
         ("Users", "Create") => typeof(UserDto),
@@ -142,8 +143,9 @@ public sealed class AccountingSwaggerOperationFilter : IOperationFilter
         ("Import", "Cancel") => typeof(ImportBatchSummaryDto),
 
         ("AuditLogs", "Get") => typeof(IReadOnlyList<AuditLogDto>),
-        _ => typeof(object)
-    };
+            _ => typeof(object)
+        };
+    }
 
     private static string BuildOperationId(string controller, string action)
     {
@@ -177,9 +179,6 @@ public sealed class AccountingSwaggerOperationFilter : IOperationFilter
             ("Tenants", "Update") => ("UpdateTenant", "Update tenant details"),
             ("Tenants", "Activate") => ("ActivateTenant", "Activate tenant"),
             ("Tenants", "Deactivate") => ("DeactivateTenant", "Deactivate tenant"),
-
-            ("TenantSwitch", "MyTenants") => ("GetMyTenants", "Get my tenants"),
-            ("TenantSwitch", "Validate") => ("ValidateTenantAccess", "Validate tenant access"),
 
             ("Users", "Get") => ("ListUsersInCurrentScope", "List users visible to current user"),
             ("Users", "Create") => ("AddUser", "Add user account"),
@@ -341,8 +340,8 @@ public sealed class AccountingSwaggerOperationFilter : IOperationFilter
             : $"Required Permission: {string.Join(", ", permissions)}.");
 
         lines.Add(tenantRequired
-            ? "Tenant Context: Yes. For SuperAdmin and AccountingOfficeAdmin, pass `X-Tenant-Id` when accessing tenant-scoped data. Normal tenant users use the tenant from their token."
-            : "Tenant Context: No explicit tenant header is required.");
+            ? "Tenant Context: Yes. Tenant and active financial year are read exclusively from JWT claims."
+            : "Tenant Context: Not required for this anonymous endpoint.");
 
         if (isFile)
         {
@@ -367,17 +366,6 @@ public sealed class AccountingSwaggerOperationFilter : IOperationFilter
             }
         }
 
-        if (tenantRequired && operation.Parameters.All(x => !x.Name.Equals(TenantHeaderName, StringComparison.OrdinalIgnoreCase)))
-        {
-            operation.Parameters.Add(new OpenApiParameter
-            {
-                Name = TenantHeaderName,
-                In = ParameterLocation.Header,
-                Required = false,
-                Description = "Required for SuperAdmin/AccountingOfficeAdmin when selecting a tenant. Normal tenant users use the TenantId claim from the access token.",
-                Schema = new OpenApiSchema { Type = "string", Format = "uuid" }
-            });
-        }
     }
 
     private static void DocumentResponses(OperationFilterContext context, OpenApiOperation operation, string statusCode, string description, Type dataType)

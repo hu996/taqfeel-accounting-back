@@ -9,6 +9,11 @@ public sealed class TenantConfiguration : IEntityTypeConfiguration<Tenant>
     public void Configure(EntityTypeBuilder<Tenant> builder)
     {
         builder.Property(x => x.CompanyName).HasMaxLength(200).IsRequired();
+        builder.Property(x => x.CompanyCode).HasMaxLength(50).IsRequired();
+        builder.Property(x => x.CompanyNameAr).HasMaxLength(200).IsRequired();
+        builder.Property(x => x.CompanyNameEn).HasMaxLength(200).IsRequired();
+        builder.Property(x => x.CompanyLogoUrl).HasMaxLength(500);
+        builder.HasIndex(x => x.CompanyCode).IsUnique();
         builder.HasIndex(x => x.TenantNo).IsUnique();
         builder.Property(x => x.Email).HasMaxLength(256);
         builder.HasIndex(x => x.CompanyName);
@@ -21,6 +26,10 @@ public sealed class ApplicationUserConfiguration : IEntityTypeConfiguration<Appl
     public void Configure(EntityTypeBuilder<ApplicationUser> builder)
     {
         builder.Property(x => x.FullName).HasMaxLength(150).IsRequired();
+        builder.Property(x => x.Language).HasMaxLength(10).IsRequired();
+        builder.HasIndex(x => new { x.TenantId, x.EmployeeId })
+            .IsUnique()
+            .HasFilter("[EmployeeId] IS NOT NULL AND [IsDeleted] = 0");
         builder.HasIndex(x => x.UserNo).IsUnique();
         builder.HasIndex(x => x.NormalizedEmail).IsUnique().HasFilter("[NormalizedEmail] IS NOT NULL");
         builder.HasQueryFilter(x => !x.IsDeleted);

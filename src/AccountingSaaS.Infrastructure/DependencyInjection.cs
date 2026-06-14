@@ -56,13 +56,20 @@ public static class DependencyInjection
                     ValidIssuer = configuration["Jwt:Issuer"],
                     ValidAudience = configuration["Jwt:Audience"],
                     IssuerSigningKey = new SymmetricSecurityKey(key),
-                    ClockSkew = TimeSpan.FromMinutes(1)
+                    ClockSkew = TimeSpan.FromMinutes(1),
+                    NameClaimType = SessionClaimNames.UserName,
+                    RoleClaimType = SessionClaimNames.Role
                 };
+                options.MapInboundClaims = false;
             });
 
         services.AddHttpContextAccessor();
+        services.AddScoped<ICurrentSessionService, CurrentSessionService>();
         services.AddScoped<ICurrentUserService, CurrentUserService>();
         services.AddScoped<ICurrentTenantService, CurrentTenantService>();
+        services.AddScoped<IJwtTokenService, JwtTokenService>();
+        services.AddScoped<ISessionContextFactory, SessionContextFactory>();
+        services.AddScoped<ISessionService, SessionService>();
         services.AddScoped<IAuthService, AuthService>();
         services.AddScoped<ITenantAccessService, TenantAccessService>();
         services.AddScoped<IAuditLogService, AuditLogService>();
@@ -89,6 +96,21 @@ public static class DependencyInjection
         services.AddScoped<IImportHandler, SuppliersImportHandler>();
         services.AddScoped<IImportHandler, BankTransactionsImportHandler>();
         services.AddScoped<ILookupService, LookupService>();
+        services.AddScoped<INotificationService, NotificationService>();
+        services.AddScoped<IActivityService, ActivityService>();
+        services.AddScoped<IDynamicWorkflowService, DynamicWorkflowService>();
+        services.AddScoped<ICommentService, CommentService>();
+        services.AddScoped<IUniversalSearchService, UniversalSearchService>();
+        services.AddScoped<ICustomFieldService, CustomFieldService>();
+        services.AddScoped<IDocumentNumberService, DocumentNumberService>();
+        services.AddScoped<IOpeningBalanceService, OpeningBalanceService>();
+        services.AddScoped<IBankReconciliationService, BankReconciliationService>();
+        services.AddScoped<IFixedAssetService, FixedAssetService>();
+        services.AddScoped<IRecurringJournalService, RecurringJournalService>();
+        services.AddScoped<IClosingAssistantService, ClosingAssistantService>();
+        services.AddScoped<IDashboardService, DashboardService>();
+        services.AddScoped<IReportBuilderService, ReportBuilderService>();
+        services.AddScoped<IBusinessPartyService, BusinessPartyService>();
         return services;
     }
 }

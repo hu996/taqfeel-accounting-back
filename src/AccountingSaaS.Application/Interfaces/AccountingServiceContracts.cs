@@ -59,6 +59,7 @@ public interface IJournalEntryService
     Task<BaseResponseDto<JournalEntryDto>> RejectAsync(Guid id, ReviewJournalEntryRequest request, CancellationToken cancellationToken);
     Task<BaseResponseDto<JournalEntryDto>> ReturnForCorrectionAsync(Guid id, ReviewJournalEntryRequest request, CancellationToken cancellationToken);
     Task<BaseResponseDto<PaginatedResult<JournalEntryDto>>> GetMyReviewQueueAsync(AccountingPagedRequest request, CancellationToken cancellationToken);
+    Task<BaseResponseDto<IReadOnlyList<JournalEntryVersionDto>>> GetVersionsAsync(Guid id, CancellationToken cancellationToken);
 }
 
 public interface IDocumentService

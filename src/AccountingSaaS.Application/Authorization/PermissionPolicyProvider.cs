@@ -3,22 +3,42 @@ using Microsoft.Extensions.Options;
 
 namespace AccountingSaaS.Application.Authorization;
 
-public sealed class PermissionPolicyProvider(IOptions<AuthorizationOptions> options) : DefaultAuthorizationPolicyProvider(options)
+public sealed class PermissionPolicyProvider : DefaultAuthorizationPolicyProvider
 {
+    private const string PermissionPrefix = "Permission:";
+    private const string ModulePrefix = "Module:";
+
+    public PermissionPolicyProvider(IOptions<AuthorizationOptions> options)
+        : base(options)
+    {
+    }
+
     public override Task<AuthorizationPolicy?> GetPolicyAsync(string policyName)
     {
-        const string prefix = "Permission:";
-        if (!policyName.StartsWith(prefix, StringComparison.OrdinalIgnoreCase))
+        if (policyName.StartsWith(
+                PermissionPrefix,
+                StringComparison.OrdinalIgnoreCase))
         {
-            return base.GetPolicyAsync(policyName);
+            var permission = policyName[PermissionPrefix.Length..];
+            var permissionPolicy = new AuthorizationPolicyBuilder()
+                .RequireAuthenticatedUser()
+                .AddRequirements(new PermissionRequirement(permission))
+                .Build();
+            return Task.FromResult<AuthorizationPolicy?>(permissionPolicy);
         }
 
-        var permission = policyName[prefix.Length..];
-        var policy = new AuthorizationPolicyBuilder()
-            .RequireAuthenticatedUser()
-            .AddRequirements(new PermissionRequirement(permission))
-            .Build();
+        if (policyName.StartsWith(
+                ModulePrefix,
+                StringComparison.OrdinalIgnoreCase))
+        {
+            var module = policyName[ModulePrefix.Length..];
+            var modulePolicy = new AuthorizationPolicyBuilder()
+                .RequireAuthenticatedUser()
+                .AddRequirements(new ModuleRequirement(module))
+                .Build();
+            return Task.FromResult<AuthorizationPolicy?>(modulePolicy);
+        }
 
-        return Task.FromResult<AuthorizationPolicy?>(policy);
+        return base.GetPolicyAsync(policyName);
     }
 }

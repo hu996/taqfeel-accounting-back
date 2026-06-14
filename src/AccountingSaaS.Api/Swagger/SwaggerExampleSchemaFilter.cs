@@ -19,7 +19,7 @@ public sealed class SwaggerExampleSchemaFilter : ISchemaFilter
             nameof(CreateAccountingPeriodRequest) => Obj(("financialYearId", GuidValue()), ("periodName", Str("2026-01")), ("startDate", Str("2026-01-01")), ("endDate", Str("2026-01-31"))),
             nameof(CreateAccountRequest) => Obj(("code", Str("1200")), ("nameAr", Str("بنك تجريبي")), ("nameEn", Str("Development Bank")), ("accountType", Int((int)AccountType.Asset)), ("normalBalance", Int((int)NormalBalance.Debit)), ("parentAccountId", Null()), ("isPostingAccount", Bool(true))),
             nameof(CreateCostCenterRequest) => Obj(("code", Str("MAIN")), ("name", Str("مركز تكلفة رئيسي تجريبي"))),
-            nameof(CreateJournalEntryRequest) => Obj(("financialYearId", GuidValue()), ("accountingPeriodId", GuidValue()), ("entryDate", Str("2026-01-10")), ("description", Str("قيد يومية تجريبي موزون")), ("lines", Arr(
+            nameof(CreateJournalEntryRequest) => Obj(("entryDate", Str("2026-01-10")), ("description", Str("قيد يومية تجريبي موزون")), ("lines", Arr(
                 Obj(("accountId", GuidValue()), ("costCenterId", GuidValue()), ("debit", Dec(1500)), ("credit", Dec(0)), ("description", Str("مدين"))),
                 Obj(("accountId", GuidValue()), ("costCenterId", GuidValue()), ("debit", Dec(0)), ("credit", Dec(1500)), ("description", Str("دائن")))))),
             nameof(JournalEntryDto) => Obj(("id", GuidValue()), ("entryNumber", Str("JE-000001")), ("entryDate", Str("2026-01-10")), ("description", Str("قيد يومية تجريبي")), ("status", Int((int)JournalEntryStatus.Posted)), ("totalDebit", Dec(1500)), ("totalCredit", Dec(1500)), ("lines", Arr())),

@@ -94,6 +94,9 @@ public static class DevelopmentSeedData
         {
             TenantNo = (await dbContext.Tenants.MaxAsync(x => (long?)x.TenantNo) ?? 0) + 1,
             CompanyName = companyName,
+            CompanyCode = $"COMP-{registrationNo}",
+            CompanyNameAr = companyName,
+            CompanyNameEn = companyName,
             CommercialRegistrationNo = registrationNo,
             TaxNumber = $"TAX-{registrationNo}",
             Email = email,
@@ -275,6 +278,7 @@ public static class DevelopmentSeedData
 
         financialYear = new FinancialYear
         {
+            YearCode = yearName,
             YearName = yearName,
             StartDate = new DateOnly(SeedYear, 1, 1),
             EndDate = new DateOnly(SeedYear, 12, 31),
@@ -299,6 +303,7 @@ public static class DevelopmentSeedData
                 {
                     FinancialYearId = financialYearId,
                     PeriodName = periodName,
+                    PeriodCode = periodName,
                     StartDate = new DateOnly(SeedYear, month, 1),
                     EndDate = new DateOnly(SeedYear, month, DateTime.DaysInMonth(SeedYear, month)),
                     Status = AccountingPeriodStatus.Open

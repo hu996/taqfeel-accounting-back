@@ -10,8 +10,14 @@ namespace AccountingSaaS.Infrastructure.Services;
 public abstract class AccountingServiceBase(AppDbContext dbContext, ICurrentTenantService currentTenant)
 {
     protected AppDbContext DbContext { get; } = dbContext;
-    // TODO: Remove default tenant fallback after authentication and tenant resolution are completed.
-    protected Guid TenantId => currentTenant.TenantId ?? TenantDefaults.DefaultTenantId;
+    protected Guid TenantId
+    {
+        get
+        {
+            return currentTenant.TenantId
+                ?? throw new UnauthorizedAccessException("A tenant session is required.");
+        }
+    }
 
     protected async Task<PaginatedResult<T>> ToPagedAsync<T>(IQueryable<T> query, PaginationRequest request, CancellationToken cancellationToken)
     {
@@ -26,9 +32,17 @@ public abstract class AccountingServiceBase(AppDbContext dbContext, ICurrentTena
         };
     }
 
-    protected async Task<bool> PeriodAllowsAccountingChangesAsync(Guid periodId, CancellationToken cancellationToken) =>
-        await DbContext.AccountingPeriods.AnyAsync(x => x.Id == periodId && x.Status == AccountingPeriodStatus.Open, cancellationToken);
+    protected async Task<bool> PeriodAllowsAccountingChangesAsync(Guid periodId, CancellationToken cancellationToken)
+    {
+        return await DbContext.AccountingPeriods.AnyAsync(
+            x => x.Id == periodId && x.Status == AccountingPeriodStatus.Open,
+            cancellationToken);
+    }
 
-    protected async Task<bool> PeriodIsClosedAsync(Guid periodId, CancellationToken cancellationToken) =>
-        await DbContext.AccountingPeriods.AnyAsync(x => x.Id == periodId && x.Status == AccountingPeriodStatus.Closed, cancellationToken);
+    protected async Task<bool> PeriodIsClosedAsync(Guid periodId, CancellationToken cancellationToken)
+    {
+        return await DbContext.AccountingPeriods.AnyAsync(
+            x => x.Id == periodId && x.Status == AccountingPeriodStatus.Closed,
+            cancellationToken);
+    }
 }

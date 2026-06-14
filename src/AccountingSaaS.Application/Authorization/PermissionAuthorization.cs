@@ -3,16 +3,68 @@ using Microsoft.AspNetCore.Authorization;
 
 namespace AccountingSaaS.Application.Authorization;
 
-public sealed class PermissionRequirement(string permission) : IAuthorizationRequirement
+public sealed class PermissionRequirement : IAuthorizationRequirement
 {
-    public string Permission { get; } = permission;
+    public PermissionRequirement(string permission)
+    {
+        Permission = permission;
+    }
+
+    public string Permission { get; }
 }
 
-public sealed class PermissionAuthorizationHandler(ICurrentUserService currentUser) : AuthorizationHandler<PermissionRequirement>
+public sealed class ModuleRequirement : IAuthorizationRequirement
 {
-    protected override Task HandleRequirementAsync(AuthorizationHandlerContext context, PermissionRequirement requirement)
+    public ModuleRequirement(string module)
     {
-        if (currentUser.IsSuperAdmin || currentUser.Permissions.Contains(requirement.Permission, StringComparer.OrdinalIgnoreCase))
+        Module = module;
+    }
+
+    public string Module { get; }
+}
+
+public sealed class PermissionAuthorizationHandler :
+    AuthorizationHandler<PermissionRequirement>
+{
+    private readonly ICurrentSessionService currentSession;
+
+    public PermissionAuthorizationHandler(ICurrentSessionService currentSession)
+    {
+        this.currentSession = currentSession;
+    }
+
+    protected override Task HandleRequirementAsync(
+        AuthorizationHandlerContext context,
+        PermissionRequirement requirement)
+    {
+        if (currentSession.IsAuthenticated &&
+            (currentSession.IsSuperAdmin ||
+             currentSession.HasPermission(requirement.Permission)))
+        {
+            context.Succeed(requirement);
+        }
+
+        return Task.CompletedTask;
+    }
+}
+
+public sealed class ModuleAuthorizationHandler :
+    AuthorizationHandler<ModuleRequirement>
+{
+    private readonly ICurrentSessionService currentSession;
+
+    public ModuleAuthorizationHandler(ICurrentSessionService currentSession)
+    {
+        this.currentSession = currentSession;
+    }
+
+    protected override Task HandleRequirementAsync(
+        AuthorizationHandlerContext context,
+        ModuleRequirement requirement)
+    {
+        if (currentSession.IsAuthenticated &&
+            (currentSession.IsSuperAdmin ||
+             currentSession.HasModule(requirement.Module)))
         {
             context.Succeed(requirement);
         }
@@ -22,4 +74,19 @@ public sealed class PermissionAuthorizationHandler(ICurrentUserService currentUs
 }
 
 [AttributeUsage(AttributeTargets.Class | AttributeTargets.Method, AllowMultiple = true)]
-public sealed class HasPermissionAttribute(string permission) : AuthorizeAttribute($"Permission:{permission}");
+public sealed class HasPermissionAttribute : AuthorizeAttribute
+{
+    public HasPermissionAttribute(string permission)
+        : base($"Permission:{permission}")
+    {
+    }
+}
+
+[AttributeUsage(AttributeTargets.Class | AttributeTargets.Method, AllowMultiple = true)]
+public sealed class RequireModuleAttribute : AuthorizeAttribute
+{
+    public RequireModuleAttribute(string module)
+        : base($"Module:{module}")
+    {
+    }
+}

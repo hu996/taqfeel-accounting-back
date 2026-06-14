@@ -42,6 +42,7 @@ public sealed class FinancialYearService(
 
         var year = new FinancialYear
         {
+            YearCode = $"FY-{request.StartDate.Year}",
             YearName = request.YearName,
             StartDate = request.StartDate,
             EndDate = request.EndDate
@@ -107,6 +108,7 @@ public sealed class FinancialYearService(
         var old = year.YearName;
 
         year.YearName = request.YearName;
+        year.YearCode = $"FY-{request.StartDate.Year}";
         year.StartDate = request.StartDate;
         year.EndDate = request.EndDate;
 

@@ -8,6 +8,8 @@ public abstract class BaseEntity
     public DateTimeOffset? UpdatedAt { get; set; }
     public Guid? UpdatedByUserId { get; set; }
     public bool IsDeleted { get; set; }
+    public DateTimeOffset? DeletedAt { get; set; }
+    public Guid? DeletedByUserId { get; set; }
 }
 
 public interface ITenantEntity

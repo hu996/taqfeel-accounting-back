@@ -70,7 +70,15 @@ public sealed class AuditLog
     public string? EntityId { get; set; }
     public string? OldValues { get; set; }
     public string? NewValues { get; set; }
-    public string? IpAddress { get; set; }
     public string? UserAgent { get; set; }
+    public DateTimeOffset CreatedAt { get; set; }
+}
+
+public sealed class PasswordHistory
+{
+    public Guid Id { get; set; }
+    public Guid UserId { get; set; }
+    public ApplicationUser User { get; set; } = default!;
+    public string PasswordHash { get; set; } = string.Empty;
     public DateTimeOffset CreatedAt { get; set; }
 }

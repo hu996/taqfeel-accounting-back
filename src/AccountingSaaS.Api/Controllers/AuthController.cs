@@ -8,33 +8,76 @@ namespace AccountingSaaS.Api.Controllers;
 
 [ApiController]
 [Route("api/[controller]")]
-public sealed class AuthController(IAuthService authService) : AccountingControllerBase
+public sealed class AuthController : AccountingControllerBase
 {
+    private readonly IAuthService authService;
+
+    public AuthController(IAuthService authService)
+    {
+        this.authService = authService;
+    }
+
     [HttpPost("Login")]
     [AllowAnonymous]
-    public Task<IActionResult> Login(LoginRequest request, CancellationToken cancellationToken) =>
-        ToResult(authService.LoginAsync(request, IpAddress(), UserAgent(), cancellationToken));
+    public async Task<IActionResult> Login(
+        LoginRequest request,
+        CancellationToken cancellationToken)
+    {
+        var result = await authService.LoginAsync(
+            request,
+            GetIpAddress(),
+            GetUserAgent(),
+            cancellationToken);
+        return ApiResult(result);
+    }
 
     [HttpPost("RefreshToken")]
     [AllowAnonymous]
-    public Task<IActionResult> RefreshToken(RefreshTokenRequest request, CancellationToken cancellationToken) =>
-        ToResult(authService.RefreshTokenAsync(request, IpAddress(), UserAgent(), cancellationToken));
+    public async Task<IActionResult> RefreshToken(
+        RefreshTokenRequest request,
+        CancellationToken cancellationToken)
+    {
+        var result = await authService.RefreshTokenAsync(
+            request,
+            GetIpAddress(),
+            GetUserAgent(),
+            cancellationToken);
+        return ApiResult(result);
+    }
 
     [HttpPost("Logout")]
     [Authorize]
-    public Task<IActionResult> Logout(LogoutRequest request, CancellationToken cancellationToken) =>
-        ToResult(authService.LogoutAsync(request, IpAddress(), UserAgent(), cancellationToken));
-
-    [HttpGet("GetCurrentUser")]
-    [Authorize]
-    public Task<IActionResult> Me(CancellationToken cancellationToken) => ToResult(authService.MeAsync(cancellationToken));
-
-    private string? IpAddress() => HttpContext.Connection.RemoteIpAddress?.ToString();
-    private string? UserAgent() => Request.Headers.UserAgent.FirstOrDefault();
-
-    private async Task<IActionResult> ToResult<T>(Task<BaseResponseDto<T>> task)
+    public async Task<IActionResult> Logout(
+        LogoutRequest request,
+        CancellationToken cancellationToken)
     {
-        var result = await task;
+        var result = await authService.LogoutAsync(
+            request,
+            GetIpAddress(),
+            GetUserAgent(),
+            cancellationToken);
         return ApiResult(result);
+    }
+
+    [HttpPost("ChangePassword")]
+    [Authorize]
+    public async Task<IActionResult> ChangePassword(
+        ChangePasswordRequest request,
+        CancellationToken cancellationToken)
+    {
+        var result = await authService.ChangePasswordAsync(
+            request,
+            cancellationToken);
+        return ApiResult(result);
+    }
+
+    private string? GetIpAddress()
+    {
+        return HttpContext.Connection.RemoteIpAddress?.ToString();
+    }
+
+    private string? GetUserAgent()
+    {
+        return Request.Headers.UserAgent.FirstOrDefault();
     }
 }

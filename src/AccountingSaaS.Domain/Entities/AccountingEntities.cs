@@ -4,6 +4,7 @@ namespace AccountingSaaS.Domain.Entities;
 
 public sealed class FinancialYear : TenantEntity
 {
+    public string YearCode { get; set; } = string.Empty;
     public string YearName { get; set; } = string.Empty;
     public DateOnly StartDate { get; set; }
     public DateOnly EndDate { get; set; }
@@ -18,6 +19,7 @@ public sealed class AccountingPeriod : TenantEntity
     public Guid FinancialYearId { get; set; }
     public FinancialYear FinancialYear { get; set; } = default!;
     public string PeriodName { get; set; } = string.Empty;
+    public string PeriodCode { get; set; } = string.Empty;
     public DateOnly StartDate { get; set; }
     public DateOnly EndDate { get; set; }
     public AccountingPeriodStatus Status { get; set; } = AccountingPeriodStatus.Open;
@@ -65,6 +67,8 @@ public sealed class JournalEntry : TenantEntity
     public string Description { get; set; } = string.Empty;
     public JournalEntryStatus Status { get; set; } = JournalEntryStatus.Draft;
     public WorkflowStatus WorkflowStatus { get; set; } = WorkflowStatus.Draft;
+    public Guid? WorkflowDefinitionId { get; set; }
+    public Guid? WorkflowStepId { get; set; }
     public Guid? AssignedReviewerUserId { get; set; }
     public string? ReviewReason { get; set; }
     public decimal TotalDebit { get; set; }
@@ -155,6 +159,8 @@ public sealed class ClosingSubmission : TenantEntity
     public Guid FinancialYearId { get; set; }
     public Guid AccountingPeriodId { get; set; }
     public ClosingSubmissionStatus Status { get; set; } = ClosingSubmissionStatus.Draft;
+    public Guid? WorkflowDefinitionId { get; set; }
+    public Guid? WorkflowStepId { get; set; }
     public Guid? AssignedReviewerUserId { get; set; }
     public DateTimeOffset? SubmittedAt { get; set; }
     public Guid? SubmittedByUserId { get; set; }

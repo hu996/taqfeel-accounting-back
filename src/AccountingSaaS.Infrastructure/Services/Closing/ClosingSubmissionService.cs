@@ -14,7 +14,9 @@ public sealed class ClosingSubmissionService(
     ICurrentTenantService currentTenant,
     ICurrentUserService currentUser,
     IAuditLogService auditLog,
-    IWorkflowAccessService workflowAccess)
+    IWorkflowAccessService workflowAccess,
+    IClosingAssistantService closingAssistant,
+    IDynamicWorkflowService dynamicWorkflow)
     : AccountingServiceBase(dbContext, currentTenant), IClosingSubmissionService
 {
     public async Task<BaseResponseDto<ClosingSubmissionDto>> GetByPeriodAsync(
@@ -116,7 +118,15 @@ public sealed class ClosingSubmissionService(
                 "لا يمكن إرسال طلب التقفيل من حالته الحالية.");
         }
 
+        var firstStep = await dynamicWorkflow.GetFirstStepAsync(nameof(ClosingSubmission), cancellationToken);
+        if (firstStep is null)
+        {
+            return BaseResponseDto<ClosingSubmissionDto>.Fail("No active period close workflow is configured.");
+        }
+
         submission.Status = ClosingSubmissionStatus.Submitted;
+        submission.WorkflowDefinitionId = firstStep.WorkflowDefinitionId;
+        submission.WorkflowStepId = firstStep.Id;
         submission.SubmittedAt = DateTimeOffset.UtcNow;
         submission.SubmittedByUserId = currentUser.UserId;
         submission.Notes = request.Notes;
@@ -149,6 +159,10 @@ public sealed class ClosingSubmissionService(
             nameof(ClosingSubmission),
             submission.Id.ToString(),
             cancellationToken: cancellationToken);
+        await dynamicWorkflow.RecordActionAsync(
+            nameof(ClosingSubmission), submission.Id, firstStep.WorkflowDefinitionId, firstStep.Id,
+            ClosingSubmissionStatus.Draft.ToString(), ClosingSubmissionStatus.Submitted.ToString(),
+            WorkflowActionType.Submit, null, request.Notes, cancellationToken);
 
         var dto = AccountingMapper.ToDto(submission);
 
@@ -262,6 +276,12 @@ public sealed class ClosingSubmissionService(
         {
             return BaseResponseDto<ClosingSubmissionDto>.Fail(
                 "يجب اعتماد طلب التقفيل قبل إغلاق الفترة.");
+        }
+
+        await closingAssistant.RunAsync(accountingPeriodId, cancellationToken);
+        if (await closingAssistant.HasBlockingFailuresAsync(accountingPeriodId, cancellationToken))
+        {
+            return BaseResponseDto<ClosingSubmissionDto>.Fail("Closing assistant found blocking failures.");
         }
 
         var hasInvalidJournalEntries = await DbContext.JournalEntries
@@ -392,6 +412,42 @@ public sealed class ClosingSubmissionService(
                 "لا يمكن تنفيذ الإجراء من حالة طلب التقفيل الحالية.");
         }
 
+        WorkflowStep? dynamicStep = null;
+        if (submission.WorkflowStepId.HasValue)
+        {
+            dynamicStep = await DbContext.WorkflowSteps.FirstOrDefaultAsync(
+                x => x.Id == submission.WorkflowStepId,
+                cancellationToken);
+        }
+
+        var workflowAction = submissionStatus switch
+        {
+            ClosingSubmissionStatus.Approved => WorkflowActionType.Approve,
+            ClosingSubmissionStatus.Rejected => WorkflowActionType.Reject,
+            ClosingSubmissionStatus.ReturnedForCorrection => WorkflowActionType.Return,
+            _ => WorkflowActionType.Submit
+        };
+        if (submissionStatus != ClosingSubmissionStatus.UnderReview &&
+            (dynamicStep is null || !await dynamicWorkflow.CanActAsync(dynamicStep, workflowAction, cancellationToken)))
+        {
+            return BaseResponseDto<ClosingSubmissionDto>.Fail("The current workflow step does not allow this action.");
+        }
+
+        if (submissionStatus == ClosingSubmissionStatus.Approved && dynamicStep is { IsFinalApproval: false })
+        {
+            var nextStep = await dynamicWorkflow.GetNextStepAsync(
+                dynamicStep.WorkflowDefinitionId,
+                dynamicStep.StepOrder,
+                cancellationToken);
+            if (nextStep is null)
+            {
+                return BaseResponseDto<ClosingSubmissionDto>.Fail("Workflow is missing the next approval step.");
+            }
+
+            submission.WorkflowStepId = nextStep.Id;
+            submissionStatus = ClosingSubmissionStatus.UnderReview;
+        }
+
         if (submissionStatus is ClosingSubmissionStatus.UnderReview
             or ClosingSubmissionStatus.Approved
             or ClosingSubmissionStatus.Rejected
@@ -451,6 +507,13 @@ public sealed class ClosingSubmissionService(
             submission.Id.ToString(),
             newValues: reason,
             cancellationToken: cancellationToken);
+        if (dynamicStep is not null && submission.WorkflowDefinitionId.HasValue &&
+            action != "ReviewStarted")
+        {
+            await dynamicWorkflow.RecordActionAsync(
+                nameof(ClosingSubmission), submission.Id, submission.WorkflowDefinitionId.Value, dynamicStep.Id,
+                requiredStatus.ToString(), submissionStatus.ToString(), workflowAction, reason, null, cancellationToken);
+        }
 
         var dto = AccountingMapper.ToDto(submission);
 

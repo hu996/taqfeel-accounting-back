@@ -13,7 +13,8 @@ public sealed class AccountingPeriodService(
     AppDbContext dbContext,
     ICurrentTenantService currentTenant,
     ICurrentUserService currentUser,
-    IAuditLogService auditLog)
+    IAuditLogService auditLog,
+    IClosingAssistantService closingAssistant)
     : AccountingServiceBase(dbContext, currentTenant), IAccountingPeriodService
 {
     public async Task<BaseResponseDto<AccountingPeriodDto>> CreateAsync(
@@ -52,6 +53,7 @@ public sealed class AccountingPeriodService(
         {
             FinancialYearId = request.FinancialYearId,
             PeriodName = request.PeriodName,
+            PeriodCode = request.StartDate.ToString("yyyy-MM"),
             StartDate = request.StartDate,
             EndDate = request.EndDate
         };
@@ -114,6 +116,7 @@ public sealed class AccountingPeriodService(
         }
 
         period.PeriodName = request.PeriodName;
+        period.PeriodCode = request.StartDate.ToString("yyyy-MM");
         period.StartDate = request.StartDate;
         period.EndDate = request.EndDate;
 
@@ -266,6 +269,12 @@ public sealed class AccountingPeriodService(
 
         if (status == AccountingPeriodStatus.Closed)
         {
+            await closingAssistant.RunAsync(id, cancellationToken);
+            if (await closingAssistant.HasBlockingFailuresAsync(id, cancellationToken))
+            {
+                return BaseResponseDto<AccountingPeriodDto>.Fail("Closing assistant found blocking failures.");
+            }
+
             var canClose = await CanCloseAsync(id, cancellationToken);
 
             if (!canClose)

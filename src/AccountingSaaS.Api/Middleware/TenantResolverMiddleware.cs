@@ -1,17 +1,23 @@
-using System.Security.Claims;
 using AccountingSaaS.Application.Interfaces;
-using AccountingSaaS.Domain.Constants;
 using AccountingSaaS.Infrastructure.Persistence;
 using AccountingSaaS.Shared.Responses;
+using Microsoft.EntityFrameworkCore;
 
 namespace AccountingSaaS.Api.Middleware;
 
-public sealed class TenantResolverMiddleware(RequestDelegate next)
+public sealed class TenantResolverMiddleware
 {
+    private readonly RequestDelegate next;
+
+    public TenantResolverMiddleware(RequestDelegate next)
+    {
+        this.next = next;
+    }
+
     public async Task InvokeAsync(
         HttpContext context,
+        ICurrentSessionService currentSession,
         ICurrentTenantService currentTenant,
-        ITenantAccessService tenantAccessService,
         AppDbContext dbContext)
     {
         currentTenant.Clear();
@@ -23,58 +29,87 @@ public sealed class TenantResolverMiddleware(RequestDelegate next)
             return;
         }
 
-        var roles = context.User.FindAll(ClaimTypes.Role).Select(x => x.Value).ToList();
-        var userId = Guid.TryParse(context.User.FindFirstValue(ClaimTypes.NameIdentifier), out var parsedUserId) ? parsedUserId : (Guid?)null;
-        var userTenantId = Guid.TryParse(context.User.FindFirstValue("tenant_id"), out var parsedTenantId) ? parsedTenantId : (Guid?)null;
-        var canSwitchTenant = roles.Contains(Roles.SuperAdmin, StringComparer.OrdinalIgnoreCase)
-            || roles.Contains(Roles.AccountingOfficeAdmin, StringComparer.OrdinalIgnoreCase)
-            || roles.Contains(Roles.Accountant, StringComparer.OrdinalIgnoreCase)
-            || roles.Contains(Roles.Reviewer, StringComparer.OrdinalIgnoreCase);
-        var tenantHeader = context.Request.Headers["X-Tenant-Id"].FirstOrDefault();
-        var isSuperAdmin = roles.Contains(Roles.SuperAdmin, StringComparer.OrdinalIgnoreCase);
-
-        if (isSuperAdmin && string.IsNullOrWhiteSpace(tenantHeader))
-        {
-            dbContext.DisableTenantFilter = true;
-        }
-
-        if (!canSwitchTenant)
-        {
-            if (userId is not null && userTenantId.HasValue)
-            {
-                if (!await tenantAccessService.CanAccessTenantAsync(userId.Value, userTenantId.Value, context.RequestAborted))
-                {
-                    context.Response.StatusCode = StatusCodes.Status403Forbidden;
-                    await context.Response.WriteAsJsonAsync(BaseResponseDto<object>.Fail("لا يمكن الوصول إلى بيانات هذه الشركة."));
-                    return;
-                }
-
-                currentTenant.SetTenant(userTenantId.Value);
-            }
-
-            await next(context);
-            return;
-        }
-
-        if (!string.IsNullOrWhiteSpace(tenantHeader) && !Guid.TryParse(tenantHeader, out _))
+        if (context.Request.Headers.ContainsKey("X-Tenant-Id") ||
+            context.Request.Query.ContainsKey("tenantId") ||
+            context.Request.Query.ContainsKey("companyId"))
         {
             context.Response.StatusCode = StatusCodes.Status400BadRequest;
-            await context.Response.WriteAsJsonAsync(BaseResponseDto<object>.Fail("معرّف الشركة المرسل غير صالح."));
+            await context.Response.WriteAsJsonAsync(
+                BaseResponseDto<object>.Fail(
+                    "TenantId and CompanyId must come from JWT claims only."));
             return;
         }
 
-        if (Guid.TryParse(tenantHeader, out var selectedTenantId))
+        try
         {
-            if (userId is null || !await tenantAccessService.CanAccessTenantAsync(userId.Value, selectedTenantId, context.RequestAborted))
+            var userId = currentSession.UserId;
+            var tenantId = currentSession.TenantId;
+            _ = currentSession.ActiveFinancialYearId;
+            _ = currentSession.UserName;
+            _ = currentSession.Email;
+            _ = currentSession.CompanyId;
+            _ = currentSession.CompanyCode;
+            _ = currentSession.CompanyNameAr;
+            _ = currentSession.CompanyNameEn;
+            _ = currentSession.IsSuperAdmin;
+            _ = currentSession.Language;
+
+            var userIsActive = await dbContext.Users
+                .IgnoreQueryFilters()
+                .AnyAsync(
+                    user =>
+                        user.Id == userId &&
+                        user.TenantId == tenantId &&
+                        user.IsActive &&
+                        !user.IsDeleted,
+                    context.RequestAborted);
+            if (!userIsActive)
             {
-                context.Response.StatusCode = StatusCodes.Status403Forbidden;
-                await context.Response.WriteAsJsonAsync(BaseResponseDto<object>.Fail("الشركة المحددة غير مسندة إلى المستخدم أو غير نشطة."));
+                await WriteUnauthorizedAsync(
+                    context,
+                    "The user session is no longer active.");
                 return;
             }
 
-            currentTenant.SetTenant(selectedTenantId);
-        }
+            var tenantIsActive = await dbContext.Tenants
+                .IgnoreQueryFilters()
+                .AnyAsync(
+                    tenant =>
+                        tenant.Id == tenantId &&
+                        tenant.IsActive &&
+                        !tenant.IsDeleted,
+                    context.RequestAborted);
+            if (!tenantIsActive)
+            {
+                await WriteForbiddenAsync(
+                    context,
+                    "The company is inactive or unavailable.");
+                return;
+            }
 
-        await next(context);
+            await next(context);
+        }
+        catch (UnauthorizedAccessException exception)
+        {
+            await WriteUnauthorizedAsync(context, exception.Message);
+        }
+    }
+
+    private static async Task WriteUnauthorizedAsync(
+        HttpContext context,
+        string message)
+    {
+        context.Response.StatusCode = StatusCodes.Status401Unauthorized;
+        await context.Response.WriteAsJsonAsync(
+            BaseResponseDto<object>.Fail(message));
+    }
+
+    private static async Task WriteForbiddenAsync(
+        HttpContext context,
+        string message)
+    {
+        context.Response.StatusCode = StatusCodes.Status403Forbidden;
+        await context.Response.WriteAsJsonAsync(
+            BaseResponseDto<object>.Fail(message));
     }
 }

@@ -61,10 +61,17 @@ public sealed class TenantsController(
             return ForbiddenResponse();
         }
 
+        var tenantNo = await numberSequence.NextAsync(
+            "TenantNo",
+            null,
+            cancellationToken);
         var tenant = new Tenant
         {
-            TenantNo = await numberSequence.NextAsync("TenantNo", null, cancellationToken),
+            TenantNo = tenantNo,
             CompanyName = request.CompanyName,
+            CompanyCode = $"COMP-{tenantNo:000}",
+            CompanyNameAr = request.CompanyName,
+            CompanyNameEn = request.CompanyName,
             CommercialRegistrationNo = request.CommercialRegistrationNo,
             TaxNumber = request.TaxNumber,
             Address = request.Address,
@@ -95,6 +102,8 @@ public sealed class TenantsController(
 
         var oldValue = tenant.CompanyName;
         tenant.CompanyName = request.CompanyName;
+        tenant.CompanyNameAr = request.CompanyName;
+        tenant.CompanyNameEn = request.CompanyName;
         tenant.CommercialRegistrationNo = request.CommercialRegistrationNo;
         tenant.TaxNumber = request.TaxNumber;
         tenant.Address = request.Address;
@@ -107,11 +116,17 @@ public sealed class TenantsController(
 
     [HttpPatch("ActivateTenant/{id:guid}")]
     [HasPermission("Tenants.Activate")]
-    public Task<IActionResult> Activate(Guid id, CancellationToken cancellationToken) => SetActive(id, true, cancellationToken);
+    public Task<IActionResult> Activate(Guid id, CancellationToken cancellationToken)
+    {
+        return SetActive(id, true, cancellationToken);
+    }
 
     [HttpPatch("DeactivateTenant/{id:guid}")]
     [HasPermission("Tenants.Deactivate")]
-    public Task<IActionResult> Deactivate(Guid id, CancellationToken cancellationToken) => SetActive(id, false, cancellationToken);
+    public Task<IActionResult> Deactivate(Guid id, CancellationToken cancellationToken)
+    {
+        return SetActive(id, false, cancellationToken);
+    }
 
     private async Task<IActionResult> SetActive(Guid id, bool isActive, CancellationToken cancellationToken)
     {
@@ -134,14 +149,34 @@ public sealed class TenantsController(
             isActive ? "تم تفعيل الشركة." : "تم إيقاف الشركة."));
     }
 
-    private async Task<bool> CanAccessTenantAsync(Guid tenantId, CancellationToken cancellationToken) =>
-        currentUser.UserId is { } userId && await tenantAccessService.CanAccessTenantAsync(userId, tenantId, cancellationToken);
-
-    private static TenantDto ToDto(Tenant tenant) => new(tenant.Id, tenant.CompanyName, tenant.CommercialRegistrationNo, tenant.TaxNumber, tenant.Address, tenant.Phone, tenant.Email, tenant.IsActive)
+    private async Task<bool> CanAccessTenantAsync(Guid tenantId, CancellationToken cancellationToken)
     {
-        TenantNo = tenant.TenantNo
-    };
+        return currentUser.UserId is { } userId &&
+               await tenantAccessService.CanAccessTenantAsync(
+                   userId,
+                   tenantId,
+                   cancellationToken);
+    }
 
-    private ObjectResult ForbiddenResponse() =>
+    private static TenantDto ToDto(Tenant tenant)
+    {
+        return new TenantDto(
+            tenant.Id,
+            tenant.CompanyName,
+            tenant.CommercialRegistrationNo,
+            tenant.TaxNumber,
+            tenant.Address,
+            tenant.Phone,
+            tenant.Email,
+            tenant.IsActive)
+        {
+            TenantNo = tenant.TenantNo
+        };
+    }
+
+    private ObjectResult ForbiddenResponse()
+    {
+        return
         StatusCode(StatusCodes.Status403Forbidden, BaseResponseDto<object>.Fail("ليس لديك صلاحية لتنفيذ هذا الإجراء."));
+    }
 }

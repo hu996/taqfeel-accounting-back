@@ -82,8 +82,6 @@ public sealed class CreateJournalEntryRequestValidator : AbstractValidator<Creat
 {
     public CreateJournalEntryRequestValidator()
     {
-        RuleFor(x => x.FinancialYearId).NotEmpty();
-        RuleFor(x => x.AccountingPeriodId).NotEmpty();
         RuleFor(x => x.Description).NotEmpty().MaximumLength(500);
         RuleFor(x => x.Lines).NotNull().Must(x => x.Count >= 2).WithMessage("يجب أن يحتوي القيد على طرفين على الأقل.");
         RuleForEach(x => x.Lines).SetValidator(new JournalEntryLineRequestValidator());
@@ -115,12 +113,18 @@ public sealed class JournalEntryLineRequestValidator : AbstractValidator<Journal
 
 public sealed class ReverseJournalEntryRequestValidator : AbstractValidator<ReverseJournalEntryRequest>
 {
-    public ReverseJournalEntryRequestValidator() => RuleFor(x => x.Reason).NotEmpty().MaximumLength(500);
+    public ReverseJournalEntryRequestValidator()
+    {
+        RuleFor(x => x.Reason).NotEmpty().MaximumLength(500);
+    }
 }
 
 public sealed class ReopenPeriodRequestValidator : AbstractValidator<ReopenPeriodRequest>
 {
-    public ReopenPeriodRequestValidator() => RuleFor(x => x.Reason).NotEmpty().MaximumLength(500);
+    public ReopenPeriodRequestValidator()
+    {
+        RuleFor(x => x.Reason).NotEmpty().MaximumLength(500);
+    }
 }
 
 public sealed class UploadDocumentRequestValidator : AbstractValidator<UploadDocumentRequest>
@@ -135,7 +139,10 @@ public sealed class UploadDocumentRequestValidator : AbstractValidator<UploadDoc
 
 public sealed class CreateClosingChecklistTemplateRequestValidator : AbstractValidator<CreateClosingChecklistTemplateRequest>
 {
-    public CreateClosingChecklistTemplateRequestValidator() => RuleFor(x => x.Name).NotEmpty().MaximumLength(200);
+    public CreateClosingChecklistTemplateRequestValidator()
+    {
+        RuleFor(x => x.Name).NotEmpty().MaximumLength(200);
+    }
 }
 
 public sealed class CreateClosingChecklistTemplateItemRequestValidator : AbstractValidator<CreateClosingChecklistTemplateItemRequest>
@@ -160,15 +167,24 @@ public sealed class CreateClosingTaskRequestValidator : AbstractValidator<Create
 
 public sealed class RejectClosingTaskRequestValidator : AbstractValidator<RejectClosingTaskRequest>
 {
-    public RejectClosingTaskRequestValidator() => RuleFor(x => x.Reason).NotEmpty().MaximumLength(500);
+    public RejectClosingTaskRequestValidator()
+    {
+        RuleFor(x => x.Reason).NotEmpty().MaximumLength(500);
+    }
 }
 
 public sealed class RejectClosingRequestValidator : AbstractValidator<RejectClosingRequest>
 {
-    public RejectClosingRequestValidator() => RuleFor(x => x.Reason).NotEmpty().MaximumLength(500);
+    public RejectClosingRequestValidator()
+    {
+        RuleFor(x => x.Reason).NotEmpty().MaximumLength(500);
+    }
 }
 
 public sealed class ReopenClosingRequestValidator : AbstractValidator<ReopenClosingRequest>
 {
-    public ReopenClosingRequestValidator() => RuleFor(x => x.Reason).NotEmpty().MaximumLength(500);
+    public ReopenClosingRequestValidator()
+    {
+        RuleFor(x => x.Reason).NotEmpty().MaximumLength(500);
+    }
 }

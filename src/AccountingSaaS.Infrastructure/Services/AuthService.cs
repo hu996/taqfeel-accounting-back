@@ -1,90 +1,293 @@
-using System.IdentityModel.Tokens.Jwt;
-using System.Security.Claims;
 using System.Security.Cryptography;
 using System.Text;
 using AccountingSaaS.Application.DTOs;
 using AccountingSaaS.Application.Interfaces;
-using AccountingSaaS.Domain.Constants;
 using AccountingSaaS.Domain.Entities;
 using AccountingSaaS.Infrastructure.Persistence;
 using AccountingSaaS.Shared.Responses;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
-using Microsoft.IdentityModel.Tokens;
 
 namespace AccountingSaaS.Infrastructure.Services;
 
-public sealed class AuthService(
-    UserManager<ApplicationUser> userManager,
-    AppDbContext dbContext,
-    IConfiguration configuration,
-    ICurrentUserService currentUser,
-    IAuditLogService auditLogService)
-    : IAuthService
+public sealed class AuthService : IAuthService
 {
-    public async Task<BaseResponseDto<AuthResponse>> LoginAsync(LoginRequest request, string? ipAddress, string? userAgent, CancellationToken cancellationToken)
+    private readonly UserManager<ApplicationUser> userManager;
+    private readonly AppDbContext dbContext;
+    private readonly IConfiguration configuration;
+    private readonly ICurrentUserService currentUser;
+    private readonly IAuditLogService auditLogService;
+    private readonly ISessionContextFactory sessionContextFactory;
+
+    public AuthService(
+        UserManager<ApplicationUser> userManager,
+        AppDbContext dbContext,
+        IConfiguration configuration,
+        ICurrentUserService currentUser,
+        IAuditLogService auditLogService,
+        ISessionContextFactory sessionContextFactory)
+    {
+        this.userManager = userManager;
+        this.dbContext = dbContext;
+        this.configuration = configuration;
+        this.currentUser = currentUser;
+        this.auditLogService = auditLogService;
+        this.sessionContextFactory = sessionContextFactory;
+    }
+
+    public async Task<BaseResponseDto<LoginResponseDto>> LoginAsync(
+        LoginRequest request,
+        string? ipAddress,
+        string? userAgent,
+        CancellationToken cancellationToken)
     {
         var user = await userManager.FindByEmailAsync(request.Email);
+        if (user is null)
+        {
+            user = await userManager.FindByNameAsync(request.Email);
+        }
+
         if (user is null || user.IsDeleted || !user.IsActive)
         {
-            await auditLogService.LogAsync("Failed login", ipAddress: ipAddress, userAgent: userAgent, cancellationToken: cancellationToken);
-            return BaseResponseDto<AuthResponse>.Fail("Invalid credentials.");
+            await auditLogService.LogAsync(
+                "Failed login",
+                userAgent: userAgent,
+                cancellationToken: cancellationToken);
+            return BaseResponseDto<LoginResponseDto>.Fail("Invalid credentials.");
+        }
+
+        if (await userManager.IsLockedOutAsync(user))
+        {
+            await auditLogService.LogAsync(
+                "Failed login - locked account",
+                userId: user.Id,
+                userAgent: userAgent,
+                cancellationToken: cancellationToken);
+            return BaseResponseDto<LoginResponseDto>.Fail("Account is temporarily locked.");
         }
 
         if (!await userManager.CheckPasswordAsync(user, request.Password))
         {
             await userManager.AccessFailedAsync(user);
-            await auditLogService.LogAsync("Failed login", userId: user.Id, ipAddress: ipAddress, userAgent: userAgent, cancellationToken: cancellationToken);
-            return BaseResponseDto<AuthResponse>.Fail("Invalid credentials.");
+            await auditLogService.LogAsync(
+                "Failed login",
+                userId: user.Id,
+                userAgent: userAgent,
+                cancellationToken: cancellationToken);
+            return BaseResponseDto<LoginResponseDto>.Fail("Invalid credentials.");
+        }
+
+        LoginResponseDto response;
+        try
+        {
+            response = await sessionContextFactory.CreateAsync(
+                user.Id,
+                user.ActiveFinancialYearId,
+                cancellationToken);
+        }
+        catch (UnauthorizedAccessException exception)
+        {
+            return BaseResponseDto<LoginResponseDto>.Fail(exception.Message);
+        }
+        catch (InvalidOperationException exception)
+        {
+            return BaseResponseDto<LoginResponseDto>.Fail(exception.Message);
         }
 
         await userManager.ResetAccessFailedCountAsync(user);
         user.LastLoginAt = DateTimeOffset.UtcNow;
+        user.ActiveFinancialYearId = response.ActiveFinancialYearId;
         await userManager.UpdateAsync(user);
 
-        var response = await CreateAuthResponseAsync(user, ipAddress, cancellationToken);
-        await auditLogService.LogAsync("Login", user.TenantId, user.Id, ipAddress: ipAddress, userAgent: userAgent, cancellationToken: cancellationToken);
-        return BaseResponseDto<AuthResponse>.Ok(response, "Login successful.");
+        var refreshToken = GenerateRefreshToken();
+        response.RefreshToken = refreshToken;
+        dbContext.RefreshTokens.Add(CreateRefreshToken(user.Id, refreshToken, ipAddress));
+        await dbContext.SaveChangesAsync(cancellationToken);
+
+        await auditLogService.LogAsync(
+            "Login",
+            response.TenantId,
+            user.Id,
+            userAgent: userAgent,
+            cancellationToken: cancellationToken);
+        return BaseResponseDto<LoginResponseDto>.Ok(response, "Login successful.");
     }
 
-    public async Task<BaseResponseDto<AuthResponse>> RefreshTokenAsync(RefreshTokenRequest request, string? ipAddress, string? userAgent, CancellationToken cancellationToken)
+    public async Task<BaseResponseDto<LoginResponseDto>> RefreshTokenAsync(
+        RefreshTokenRequest request,
+        string? ipAddress,
+        string? userAgent,
+        CancellationToken cancellationToken)
     {
         var tokenHash = HashToken(request.RefreshToken);
-        var storedToken = await dbContext.RefreshTokens.Include(x => x.User).FirstOrDefaultAsync(x => x.TokenHash == tokenHash, cancellationToken);
+        var storedToken = await dbContext.RefreshTokens
+            .Include(item => item.User)
+            .FirstOrDefaultAsync(item => item.TokenHash == tokenHash, cancellationToken);
         if (storedToken is null)
         {
-            await auditLogService.LogAsync("Failed refresh token", ipAddress: ipAddress, userAgent: userAgent, cancellationToken: cancellationToken);
-            return BaseResponseDto<AuthResponse>.Fail("Invalid refresh token.");
+            await auditLogService.LogAsync(
+                "Failed refresh token",
+                userAgent: userAgent,
+                cancellationToken: cancellationToken);
+            return BaseResponseDto<LoginResponseDto>.Fail("Invalid refresh token.");
         }
 
-        if (!storedToken.IsActive || storedToken.User.IsDeleted || !storedToken.User.IsActive)
+        if (!storedToken.IsActive ||
+            storedToken.User.IsDeleted ||
+            !storedToken.User.IsActive)
         {
             if (storedToken.RevokedAt.HasValue)
             {
-                await RevokeDescendantRefreshTokensAsync(storedToken, ipAddress, cancellationToken);
+                await RevokeDescendantRefreshTokensAsync(
+                    storedToken,
+                    ipAddress,
+                    cancellationToken);
             }
 
-            await auditLogService.LogAsync("Failed refresh token", storedToken.User.TenantId, storedToken.UserId, ipAddress: ipAddress, userAgent: userAgent, cancellationToken: cancellationToken);
-            return BaseResponseDto<AuthResponse>.Fail("Invalid refresh token.");
+            await auditLogService.LogAsync(
+                "Failed refresh token",
+                storedToken.User.TenantId,
+                storedToken.UserId,
+                userAgent: userAgent,
+                cancellationToken: cancellationToken);
+            return BaseResponseDto<LoginResponseDto>.Fail("Invalid refresh token.");
+        }
+
+        LoginResponseDto response;
+        try
+        {
+            response = await sessionContextFactory.CreateAsync(
+                storedToken.User.Id,
+                storedToken.User.ActiveFinancialYearId,
+                cancellationToken);
+        }
+        catch (Exception exception) when (
+            exception is UnauthorizedAccessException or InvalidOperationException)
+        {
+            return BaseResponseDto<LoginResponseDto>.Fail(exception.Message);
         }
 
         var newRefreshToken = GenerateRefreshToken();
         storedToken.RevokedAt = DateTimeOffset.UtcNow;
         storedToken.RevokedByIp = ipAddress;
         storedToken.ReplacedByTokenHash = HashToken(newRefreshToken);
+        response.RefreshToken = newRefreshToken;
+        dbContext.RefreshTokens.Add(
+            CreateRefreshToken(storedToken.UserId, newRefreshToken, ipAddress));
+        await dbContext.SaveChangesAsync(cancellationToken);
 
-        var auth = await CreateAuthResponseAsync(storedToken.User, ipAddress, cancellationToken, newRefreshToken);
-        await auditLogService.LogAsync("Refresh token", storedToken.User.TenantId, storedToken.User.Id, ipAddress: ipAddress, userAgent: userAgent, cancellationToken: cancellationToken);
-        return BaseResponseDto<AuthResponse>.Ok(auth, "Token refreshed.");
+        await auditLogService.LogAsync(
+            "Refresh token",
+            response.TenantId,
+            storedToken.User.Id,
+            userAgent: userAgent,
+            cancellationToken: cancellationToken);
+        return BaseResponseDto<LoginResponseDto>.Ok(response, "Token refreshed.");
     }
 
-    private async Task RevokeDescendantRefreshTokensAsync(RefreshToken refreshToken, string? ipAddress, CancellationToken cancellationToken)
+    public async Task<BaseResponseDto<object>> LogoutAsync(
+        LogoutRequest request,
+        string? ipAddress,
+        string? userAgent,
+        CancellationToken cancellationToken)
+    {
+        var tokenHash = HashToken(request.RefreshToken);
+        var storedToken = await dbContext.RefreshTokens
+            .FirstOrDefaultAsync(
+                item => item.TokenHash == tokenHash,
+                cancellationToken);
+        if (storedToken is not null && storedToken.RevokedAt is null)
+        {
+            storedToken.RevokedAt = DateTimeOffset.UtcNow;
+            storedToken.RevokedByIp = ipAddress;
+            await dbContext.SaveChangesAsync(cancellationToken);
+            await auditLogService.LogAsync(
+                "Logout",
+                userId: storedToken.UserId,
+                userAgent: userAgent,
+                cancellationToken: cancellationToken);
+        }
+
+        return BaseResponseDto<object>.Ok(null, "Logged out.");
+    }
+
+    public async Task<BaseResponseDto<object>> ChangePasswordAsync(
+        ChangePasswordRequest request,
+        CancellationToken cancellationToken)
+    {
+        if (currentUser.UserId is not { } userId)
+        {
+            return BaseResponseDto<object>.Fail("User is not authenticated.");
+        }
+
+        var user = await userManager.FindByIdAsync(userId.ToString());
+        if (user is null || user.PasswordHash is null)
+        {
+            return BaseResponseDto<object>.NotFound("User was not found.");
+        }
+
+        if (!await userManager.CheckPasswordAsync(user, request.CurrentPassword))
+        {
+            return BaseResponseDto<object>.Fail("Current password is incorrect.");
+        }
+
+        var recentHashes = await dbContext.PasswordHistories
+            .Where(item => item.UserId == userId)
+            .OrderByDescending(item => item.CreatedAt)
+            .Select(item => item.PasswordHash)
+            .Take(2)
+            .ToListAsync(cancellationToken);
+        recentHashes.Insert(0, user.PasswordHash);
+        var hasher = userManager.PasswordHasher;
+        var passwordWasUsed = recentHashes
+            .Distinct()
+            .Any(hash =>
+                hasher.VerifyHashedPassword(user, hash, request.NewPassword) !=
+                PasswordVerificationResult.Failed);
+        if (passwordWasUsed)
+        {
+            return BaseResponseDto<object>.Fail(
+                "The new password cannot match any of the last three passwords.");
+        }
+
+        var oldHash = user.PasswordHash;
+        var result = await userManager.ChangePasswordAsync(
+            user,
+            request.CurrentPassword,
+            request.NewPassword);
+        if (!result.Succeeded)
+        {
+            return BaseResponseDto<object>.Fail(
+                "Password could not be changed.",
+                result.Errors.Select(error => error.Description));
+        }
+
+        dbContext.PasswordHistories.Add(new PasswordHistory
+        {
+            Id = Guid.NewGuid(),
+            UserId = user.Id,
+            PasswordHash = oldHash,
+            CreatedAt = DateTimeOffset.UtcNow
+        });
+        user.PasswordChangedAt = DateTimeOffset.UtcNow;
+        user.MustChangePassword = false;
+        await dbContext.SaveChangesAsync(cancellationToken);
+        return BaseResponseDto<object>.Ok(null, "Password changed successfully.");
+    }
+
+    private async Task RevokeDescendantRefreshTokensAsync(
+        RefreshToken refreshToken,
+        string? ipAddress,
+        CancellationToken cancellationToken)
     {
         var replacementHash = refreshToken.ReplacedByTokenHash;
         while (!string.IsNullOrWhiteSpace(replacementHash))
         {
-            var childToken = await dbContext.RefreshTokens.FirstOrDefaultAsync(x => x.TokenHash == replacementHash, cancellationToken);
+            var childToken = await dbContext.RefreshTokens
+                .FirstOrDefaultAsync(
+                    item => item.TokenHash == replacementHash,
+                    cancellationToken);
             if (childToken is null)
             {
                 return;
@@ -102,100 +305,22 @@ public sealed class AuthService(
         await dbContext.SaveChangesAsync(cancellationToken);
     }
 
-    public async Task<BaseResponseDto<object>> LogoutAsync(LogoutRequest request, string? ipAddress, string? userAgent, CancellationToken cancellationToken)
+    private RefreshToken CreateRefreshToken(
+        Guid userId,
+        string token,
+        string? ipAddress)
     {
-        var tokenHash = HashToken(request.RefreshToken);
-        var storedToken = await dbContext.RefreshTokens.FirstOrDefaultAsync(x => x.TokenHash == tokenHash, cancellationToken);
-        if (storedToken is not null && storedToken.RevokedAt is null)
+        return new RefreshToken
         {
-            storedToken.RevokedAt = DateTimeOffset.UtcNow;
-            storedToken.RevokedByIp = ipAddress;
-            await dbContext.SaveChangesAsync(cancellationToken);
-            await auditLogService.LogAsync("Logout", userId: storedToken.UserId, ipAddress: ipAddress, userAgent: userAgent, cancellationToken: cancellationToken);
-        }
-
-        return BaseResponseDto<object>.Ok(null, "Logged out.");
-    }
-
-    public async Task<BaseResponseDto<CurrentUserDto>> MeAsync(CancellationToken cancellationToken)
-    {
-        if (currentUser.UserId is not { } userId)
-        {
-            return BaseResponseDto<CurrentUserDto>.Fail("User is not authenticated.");
-        }
-
-        var user = await dbContext.Users.FindAsync([userId], cancellationToken);
-        if (user is null)
-        {
-            return BaseResponseDto<CurrentUserDto>.Fail("User was not found.");
-        }
-
-        var roles = await userManager.GetRolesAsync(user);
-        var permissions = await GetPermissionsAsync(roles, cancellationToken);
-        return BaseResponseDto<CurrentUserDto>.Ok(new CurrentUserDto(user.Id, user.FullName, user.Email!, roles.ToList(), permissions, user.TenantId));
-    }
-
-    private async Task<AuthResponse> CreateAuthResponseAsync(ApplicationUser user, string? ipAddress, CancellationToken cancellationToken, string? refreshToken = null)
-    {
-        var roles = await userManager.GetRolesAsync(user);
-        var permissions = await GetPermissionsAsync(roles, cancellationToken);
-        var expiresAt = DateTimeOffset.UtcNow.AddMinutes(configuration.GetValue<int>("Jwt:AccessTokenMinutes", 15));
-        var accessToken = CreateAccessToken(user, roles, permissions, expiresAt);
-        refreshToken ??= GenerateRefreshToken();
-        dbContext.RefreshTokens.Add(CreateRefreshToken(user.Id, refreshToken, ipAddress));
-        await dbContext.SaveChangesAsync(cancellationToken);
-        return new AuthResponse(accessToken, refreshToken, expiresAt, new CurrentUserDto(user.Id, user.FullName, user.Email!, roles.ToList(), permissions, user.TenantId));
-    }
-
-    private string CreateAccessToken(ApplicationUser user, IEnumerable<string> roles, IEnumerable<string> permissions, DateTimeOffset expiresAt)
-    {
-        var claims = new List<Claim>
-        {
-            new(ClaimTypes.NameIdentifier, user.Id.ToString()),
-            new(ClaimTypes.Email, user.Email ?? string.Empty),
-            new(JwtRegisteredClaimNames.Sub, user.Id.ToString())
+            Id = Guid.NewGuid(),
+            UserId = userId,
+            TokenHash = HashToken(token),
+            ExpiresAt = DateTimeOffset.UtcNow.AddDays(
+                configuration.GetValue<int>("Jwt:RefreshTokenDays", 7)),
+            CreatedAt = DateTimeOffset.UtcNow,
+            CreatedByIp = ipAddress
         };
-        claims.AddRange(roles.Select(role => new Claim(ClaimTypes.Role, role)));
-        claims.AddRange(permissions.Select(permission => new Claim("permission", permission)));
-        if (user.TenantId.HasValue)
-        {
-            claims.Add(new Claim("tenant_id", user.TenantId.Value.ToString()));
-        }
-
-        var key = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(configuration["Jwt:Secret"] ?? throw new InvalidOperationException("Jwt:Secret is missing.")));
-        var token = new JwtSecurityToken(
-            issuer: configuration["Jwt:Issuer"],
-            audience: configuration["Jwt:Audience"],
-            claims: claims,
-            expires: expiresAt.UtcDateTime,
-            signingCredentials: new SigningCredentials(key, SecurityAlgorithms.HmacSha256));
-        return new JwtSecurityTokenHandler().WriteToken(token);
     }
-
-    private async Task<IReadOnlyList<string>> GetPermissionsAsync(IEnumerable<string> roles, CancellationToken cancellationToken)
-    {
-        var roleNames = roles.ToList();
-        if (roleNames.Contains(Roles.SuperAdmin))
-        {
-            return Permissions.All;
-        }
-
-        return await dbContext.RolePermissions
-            .Where(x => roleNames.Contains(x.Role.Name!))
-            .Select(x => x.Permission.Name)
-            .Distinct()
-            .ToListAsync(cancellationToken);
-    }
-
-    private RefreshToken CreateRefreshToken(Guid userId, string token, string? ipAddress) => new()
-    {
-        Id = Guid.NewGuid(),
-        UserId = userId,
-        TokenHash = HashToken(token),
-        ExpiresAt = DateTimeOffset.UtcNow.AddDays(configuration.GetValue<int>("Jwt:RefreshTokenDays", 7)),
-        CreatedAt = DateTimeOffset.UtcNow,
-        CreatedByIp = ipAddress
-    };
 
     private static string GenerateRefreshToken()
     {
